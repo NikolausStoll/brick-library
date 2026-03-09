@@ -1,0 +1,14 @@
+{
+  "name": "brick-library",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "install:all": "npm install --workspaces",
+    "dev:backend": "npm --prefix backend run start",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\""
+  }
+}

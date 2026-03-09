@@ -1,0 +1,33 @@
+name: "Brick Library"
+slug: "brick-library"
+description: "Personal brick set tracker frontend and backend"
+version: "0.1.0"
+url: "https://github.com/NikolausStoll/brick-library"
+
+arch:
+  - amd64
+  - aarch64
+  - armv7
+
+startup: application
+init: false
+
+ingress: true
+ingress_port: 8097
+
+ports:
+  8097/tcp: 8097
+ports_description:
+  8097/tcp: "Media Library Web UI (direct)"
+
+image: "ghcr.io/nikolausstoll/brick-library"
+
+options:
+  port: 8099
+  db_path: "/data/brick-library.db"
+  static_dir: "/app/public"
+
+schema:
+  port: int(1024,65535)
+  db_path: str
+  static_dir: str
