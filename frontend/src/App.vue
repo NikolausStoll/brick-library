@@ -59,7 +59,9 @@
                 <p class="set-card__status">{{ set.status }}</p>
               </div>
               <p class="set-card__name">{{ set.setName }}</p>
-              <p class="set-card__number" v-if="set.setNumber">#{{ set.setNumber }}</p>
+          <p class="set-card__number" v-if="set.setNumber || set.legoReferenceNumber">
+            {{ formatSetNumber(set) }}
+          </p>
               <dl class="set-card__meta">
                 <div>
                   <dt>Price</dt>
@@ -69,6 +71,10 @@
                   <dt>Pieces</dt>
                   <dd>{{ set.pieceCount ?? '—' }}</dd>
                 </div>
+              <div>
+                <dt>Brick size</dt>
+                <dd>{{ set.brickSize }}</dd>
+              </div>
                 <div>
                   <dt>Price per piece</dt>
                   <dd>{{ formatCents(set.pricePerPiece) }}</dd>
@@ -103,34 +109,63 @@
           &times;
         </button>
       </div>
-      <label>
-        Manufacturer
-        <input v-model="form.manufacturer" type="text" required placeholder="LEGO" />
-      </label>
-      <label>
-        Set name
-        <input v-model="form.setName" type="text" required placeholder="Millennium Falcon" />
-      </label>
-      <label>
-        Set number
-        <input v-model="form.setNumber" type="text" placeholder="75192" />
-      </label>
-      <label>
-        Status
-        <select v-model="form.status">
-          <option v-for="status in statuses" :key="status" :value="status">
-            {{ status }}
-          </option>
-        </select>
-      </label>
-      <label>
-        Purchase price (EUR)
-        <input v-model="form.purchasePrice" type="number" step="0.01" placeholder="199.99" />
-      </label>
-      <label>
-        Piece count
-        <input v-model="form.pieceCount" type="number" min="0" placeholder="7541" />
-      </label>
+      <div class="form-grid">
+        <label>
+          Manufacturer
+          <input
+            v-model="form.manufacturer"
+            type="text"
+            required
+            list="manufacturer-options"
+            placeholder="LEGO"
+          />
+          <datalist id="manufacturer-options">
+            <option v-for="manufacturer in manufacturers" :key="manufacturer" :value="manufacturer" />
+          </datalist>
+        </label>
+        <label>
+          Set name
+          <input v-model="form.setName" type="text" required placeholder="Millennium Falcon" />
+        </label>
+        <label>
+          Set number
+          <input v-model="form.setNumber" type="text" placeholder="75192" />
+        </label>
+        <label>
+          LEGO reference number
+          <input v-model="form.legoReferenceNumber" type="text" placeholder="21348" />
+        </label>
+        <label>
+          Status
+          <select v-model="form.status">
+            <option v-for="status in statuses" :key="status" :value="status">
+              {{ status }}
+            </option>
+          </select>
+        </label>
+        <label>
+          Brick size
+          <select v-model="form.brickSize">
+            <option v-for="size in brickSizes" :key="size" :value="size">
+              {{ size }}
+            </option>
+          </select>
+        </label>
+        <label>
+          Purchase price (EUR)
+          <input
+            v-model="form.purchasePrice"
+            type="text"
+            inputmode="decimal"
+            placeholder="199,99"
+            @input="handleDecimalInput('purchasePrice', $event.target.value)"
+          />
+        </label>
+        <label>
+          Piece count
+          <input v-model="form.pieceCount" type="number" min="0" placeholder="7541" />
+        </label>
+      </div>
       <button type="submit" :disabled="submitting">{{ isEditing ? 'Update set' : 'Save set' }}</button>
       <button
         v-if="isEditing"
@@ -191,6 +226,8 @@ type BrickSet = {
   manufacturer: string;
   setName: string;
   setNumber: string | null;
+  legoReferenceNumber: string | null;
+  brickSize: string;
   status: SetStatus;
   purchasePrice: number | null;
   pieceCount: number | null;
@@ -198,6 +235,26 @@ type BrickSet = {
 };
 
 const statuses: SetStatus[] = ['New', 'Building', 'Built', 'Disassembled'];
+const brickSizes = ['Diamond', 'Mini', 'Standard'];
+const manufacturers = [
+  'CaDA',
+  'DAGAO',
+  'JIESTAR',
+  'King',
+  'LEGO',
+  'Lezi',
+  'LOZ',
+  'Mega',
+  'MINISO',
+  'Mork',
+  'Mould King',
+  'Panlos',
+  'QLT',
+  'Segao',
+  'TGL',
+  'Wange',
+  'Unknown'
+];
 
 const sets = ref<BrickSet[]>([]);
 const submitting = ref(false);
@@ -271,6 +328,8 @@ type FormPayload = {
   manufacturer: string;
   setName: string;
   setNumber: string;
+  legoReferenceNumber: string;
+  brickSize: string;
   status: SetStatus;
   purchasePrice: string;
   pieceCount: string;
@@ -280,6 +339,8 @@ const createEmptyForm = (): FormPayload => ({
   manufacturer: '',
   setName: '',
   setNumber: '',
+  legoReferenceNumber: '',
+  brickSize: 'Standard',
   status: statuses[0],
   purchasePrice: '',
   pieceCount: ''
@@ -294,6 +355,25 @@ const clearFormFields = () => {
   form.value = createEmptyForm();
 };
 
+const formatDecimalInputValue = (value: string) => {
+  const sanitized = value.replace(/,/g, '.').replace(/[^\d.]/g, '');
+  if (sanitized === '') {
+    return '';
+  }
+  const [intPart, decPart] = sanitized.split('.');
+  return decPart !== undefined ? `${intPart},${decPart}` : intPart;
+};
+
+const handleDecimalInput = (field: 'purchasePrice', rawValue: string) => {
+  form.value[field] = formatDecimalInputValue(rawValue);
+};
+
+const parseDecimalString = (value: string) => {
+  const normalized = value.replace(',', '.');
+  const parsed = Number(normalized);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
 const openAddForm = () => {
   clearFormFields();
   isFormOverlayVisible.value = true;
@@ -304,11 +384,24 @@ const closeFormOverlay = () => {
   isFormOverlayVisible.value = false;
 };
 
+const formatWithComma = (value: number, digits: number) => {
+  return value.toFixed(digits).replace('.', ',');
+};
+
+const formatSetNumber = (set: BrickSet) => {
+  if (set.legoReferenceNumber) {
+    return set.setNumber
+      ? `#${set.legoReferenceNumber} (#${set.setNumber})`
+      : set.legoReferenceNumber;
+  }
+  return set.setNumber ? `#${set.setNumber}` : '';
+};
+
 const formatPrice = (value: number | null) => {
   if (value === null || value === undefined) {
     return '—';
   }
-  return `€${value.toFixed(2)}`;
+  return `€${formatWithComma(value, 2)}`;
 };
 
 const formatCents = (value: number | null) => {
@@ -316,7 +409,7 @@ const formatCents = (value: number | null) => {
     return '—';
   }
   const cents = value * 100;
-  return `${cents.toFixed(3)} ct`;
+  return `${formatWithComma(cents, 3)} ct`;
 };
 
 const loadSets = async () => {
@@ -337,8 +430,11 @@ const startEditing = (set: BrickSet) => {
     manufacturer: set.manufacturer,
     setName: set.setName,
     setNumber: set.setNumber ?? '',
+    legoReferenceNumber: set.legoReferenceNumber ?? '',
+    brickSize: set.brickSize ?? 'Standard',
     status: set.status,
-    purchasePrice: set.purchasePrice != null ? String(set.purchasePrice) : '',
+    purchasePrice:
+      set.purchasePrice != null ? formatWithComma(set.purchasePrice, 2) : '',
     pieceCount: set.pieceCount != null ? String(set.pieceCount) : ''
   };
   isFormOverlayVisible.value = true;
@@ -354,9 +450,13 @@ const saveSet = async () => {
       manufacturer: form.value.manufacturer,
       setName: form.value.setName,
       setNumber: form.value.setNumber || null,
+      legoReferenceNumber: form.value.legoReferenceNumber || null,
+      brickSize: brickSizes.includes(form.value.brickSize)
+        ? form.value.brickSize
+        : 'Standard',
       status: form.value.status,
       purchasePrice:
-        form.value.purchasePrice === '' ? null : Number(form.value.purchasePrice),
+        form.value.purchasePrice === '' ? null : parseDecimalString(form.value.purchasePrice),
       pieceCount: form.value.pieceCount === '' ? null : Number(form.value.pieceCount)
     };
 
@@ -423,7 +523,7 @@ onMounted(() => {
 .form-card button {
   width: 100%;
   padding: 0.85rem;
-  margin-top: 1rem;
+  margin-top: 0.75rem;
   border: none;
   border-radius: 0.9rem;
   background: #ffd502;
@@ -459,10 +559,26 @@ onMounted(() => {
 .form-card select {
   width: 100%;
   padding: 0.65rem;
-  margin-top: 0.35rem;
+  margin-top: 0.15rem;
   border-radius: 0.65rem;
   border: 1px solid rgba(15, 23, 42, 0.2);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
+}
+
+.form-card label {
+  font-size: 0.85rem;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+}
+
+@media (max-width: 600px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .list-header {
@@ -507,6 +623,7 @@ onMounted(() => {
 .set-grid {
   display: grid;
   gap: 1rem;
+  grid-template-columns: repeat(2, 1fr);
 }
 
 .set-card {
@@ -603,6 +720,11 @@ onMounted(() => {
 }
 
 @media (max-width: 640px) {
+  .set-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(1, 1fr);
+  }
   .set-card__layout {
     grid-template-columns: 1fr;
   }

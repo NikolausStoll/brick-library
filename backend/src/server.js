@@ -22,6 +22,7 @@ db.exec(`
     setName TEXT NOT NULL,
     setNumber TEXT,
     legoReferenceNumber TEXT,
+    brickSize TEXT NOT NULL DEFAULT 'Standard',
     purchasePrice INTEGER,
     pieceCount INTEGER,
     status TEXT NOT NULL DEFAULT 'New',
@@ -42,6 +43,13 @@ db.exec(`
   )
 `);
 
+const tableInfo = db.prepare('PRAGMA table_info(sets)').all();
+const hasBrickSizeColumn = tableInfo.some((column) => column.name === 'brickSize');
+
+if (!hasBrickSizeColumn) {
+  db.exec("ALTER TABLE sets ADD COLUMN brickSize TEXT NOT NULL DEFAULT 'Standard'");
+}
+
 const app = express();
 app.use(express.json());
 
@@ -60,6 +68,7 @@ const sanitizeNullableBoolean = (value) => {
 };
 
 const STATUSES = new Set(['New', 'Building', 'Built', 'Disassembled']);
+const BRICK_SIZES = new Set(['Diamond', 'Mini', 'Standard']);
 
 const toPriceCents = (value) => {
   if (value === null || value === undefined || value === '') {
@@ -86,6 +95,7 @@ const mapRow = (row) => {
     setName: row.setName,
     setNumber: row.setNumber,
     legoReferenceNumber: row.legoReferenceNumber,
+    brickSize: row.brickSize ?? 'Standard',
     purchasePrice,
     pieceCount,
     pricePerPiece,
@@ -112,6 +122,7 @@ const BASE_COLUMNS = [
   'setName',
   'setNumber',
   'legoReferenceNumber',
+  'brickSize',
   'purchasePrice',
   'pieceCount',
   'status',
@@ -150,6 +161,7 @@ const preparePayload = (raw) => {
     setName: raw.setName?.trim() ?? '',
     setNumber: raw.setNumber?.trim() || null,
     legoReferenceNumber: raw.legoReferenceNumber?.trim() || null,
+    brickSize: BRICK_SIZES.has(raw.brickSize) ? raw.brickSize : 'Standard',
     purchasePrice: toPriceCents(raw.purchasePrice),
     pieceCount:
       raw.pieceCount != null
