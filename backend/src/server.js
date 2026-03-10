@@ -1,8 +1,16 @@
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
 import express from 'express';
 import Database from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 
+dotenv.config({
+  path: fileURLToPath(new URL('../../.env', import.meta.url))
+});
+
 const DB_PATH = process.env.DATABASE_PATH || 'brick-library.db';
+console.log('ENV DATABASE_PATH', process.env.DATABASE_PATH);
+console.log('DATABASE_PATH', DB_PATH);
 const PORT = Number(process.env.PORT || 8097);
 
 const db = new Database(DB_PATH);
