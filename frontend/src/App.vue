@@ -5,50 +5,110 @@
     </section>
 
   <section class="content-grid">
+    <section class="card controls-card">
+      <div class="controls-bar">
+        <div class="chip-group">
+          <span class="controls-label">Filter</span>
+          <div class="chip filter-chip">
+            <span>{{ filters.manufacturer || 'Manufacturer' }}</span>
+            <select v-model="filters.manufacturer">
+              <option value="">All</option>
+              <option v-for="manufacturer in manufacturers" :key="manufacturer" :value="manufacturer">
+                {{ manufacturer }}
+              </option>
+            </select>
+          </div>
+          <div class="chip filter-chip">
+            <span>{{ filters.status || 'Status' }}</span>
+            <select v-model="filters.status">
+              <option value="">All</option>
+              <option v-for="status in statuses" :key="status" :value="status">
+                {{ status }}
+              </option>
+            </select>
+          </div>
+          <div class="chip filter-chip">
+            <span>{{ filters.brickSize || 'Brick size' }}</span>
+            <select v-model="filters.brickSize">
+              <option value="">All</option>
+              <option v-for="size in brickSizes" :key="size" :value="size">
+                {{ size }}
+              </option>
+            </select>
+          </div>
+        </div>
+        <div class="chip-group">
+          <span class="controls-label">Sort</span>
+          <div class="sort-chips">
+            <button
+              v-for="option in sortOptions"
+              :key="option.key"
+              type="button"
+              class="chip sort-chip"
+              :class="{ active: sortField === option.key }"
+              @click="setSortField(option.key)"
+            >
+              <span>{{ option.label }}</span>
+              <span class="sort-direction">
+                {{ sortField === option.key ? (sortDirection === 'asc' ? '▲' : '▼') : '' }}
+              </span>
+            </button>
+            <button type="button" class="chip reset-chip" @click="resetFilters">
+              Reset
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
     <section class="card list-card">
       <div class="list-header">
-        <div class="list-header__title">
-          <h2>Collection</h2>
-          <span class="count">{{ sets.length }} sets</span>
-        </div>
+          <div class="list-header__title">
+            <h2>Collection</h2>
+            <span class="count">{{ filteredSets.length }} sets</span>
+          </div>
         <button type="button" class="primary-button" @click="openAddForm">
           Add a set
         </button>
       </div>
-      <div v-if="sets.length === 0" class="empty">
-        No sets yet. Add one to start tracking your library.
+      <div v-if="filteredSets.length === 0" class="empty">
+        {{ sets.length === 0 ? 'No sets yet. Add one to start tracking your library.' : 'No sets match the active filters.' }}
       </div>
       <div v-else class="set-grid">
-        <article v-for="set in sets" :key="set.id" class="set-card">
+        <article
+          v-for="set in filteredSets"
+          :key="set.id"
+          class="set-card"
+          @click="startEditing(set)"
+        >
           <div class="set-card__layout">
             <div class="set-card__image-panel">
               <div class="set-card__image-wrapper">
                 <img
                   :src="galleryImageUrls[getImageIndex(set.id)]"
                   :alt="`Image preview for ${set.setName}`"
-                class="set-card__image"
-                loading="lazy"
-                @click="openImageViewer(getImageIndex(set.id))"
+                  class="set-card__image"
+                  loading="lazy"
+                  @click.stop="openImageViewer(getImageIndex(set.id))"
                 />
                 <div class="set-card__image-controls">
-                <button
-                  type="button"
-                  class="carousel-button"
-                  @click="showPreviousImage(set.id)"
-                  :disabled="galleryImageUrls.length < 2"
-                  aria-label="Show previous image"
-                >
-                  ‹
-                </button>
-                <button
-                  type="button"
-                  class="carousel-button"
-                  @click="showNextImage(set.id)"
-                  :disabled="galleryImageUrls.length < 2"
-                  aria-label="Show next image"
-                >
-                  ›
-                </button>
+                  <button
+                    type="button"
+                    class="carousel-button"
+                    @click.stop="showPreviousImage(set.id)"
+                    :disabled="galleryImageUrls.length < 2"
+                    aria-label="Show previous image"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    class="carousel-button"
+                    @click.stop="showNextImage(set.id)"
+                    :disabled="galleryImageUrls.length < 2"
+                    aria-label="Show next image"
+                  >
+                    ›
+                  </button>
                 </div>
               </div>
             </div>
@@ -71,18 +131,15 @@
                   <dt>Pieces</dt>
                   <dd>{{ set.pieceCount ?? '—' }}</dd>
                 </div>
-              <div>
-                <dt>Brick size</dt>
-                <dd>{{ set.brickSize }}</dd>
-              </div>
                 <div>
                   <dt>Price per piece</dt>
                   <dd>{{ formatCents(set.pricePerPiece) }}</dd>
                 </div>
+                <div>
+                  <dt>Brick size</dt>
+                  <dd>{{ set.brickSize }}</dd>
+                </div>
               </dl>
-              <div class="set-card__actions">
-                <button type="button" class="link-button" @click="startEditing(set)">Edit</button>
-              </div>
             </div>
           </div>
         </article>
@@ -217,7 +274,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 
 type SetStatus = 'New' | 'Building' | 'Built' | 'Disassembled';
 
@@ -239,7 +296,7 @@ const brickSizes = ['Diamond', 'Mini', 'Standard'];
 const manufacturers = [
   'CaDA',
   'DAGAO',
-  'JIESTAR',
+  'Jiestar',
   'King',
   'LEGO',
   'Lezi',
@@ -250,10 +307,16 @@ const manufacturers = [
   'Mould King',
   'Panlos',
   'QLT',
-  'Segao',
   'TGL',
   'Wange',
   'Unknown'
+];
+type SortField = 'setName' | 'purchasePrice' | 'pieceCount' | 'pricePerPiece';
+const sortOptions: Array<{ key: SortField; label: string }> = [
+  { key: 'setName', label: 'Name' },
+  { key: 'purchasePrice', label: 'Price' },
+  { key: 'pieceCount', label: 'Pieces' },
+  { key: 'pricePerPiece', label: 'Price per piece' }
 ];
 
 const sets = ref<BrickSet[]>([]);
@@ -412,6 +475,70 @@ const formatCents = (value: number | null) => {
   return `${formatWithComma(cents, 3)} ct`;
 };
 
+const filters = reactive({
+  manufacturer: '',
+  status: '',
+  brickSize: ''
+});
+
+const sortField = ref<SortField>('setName');
+const sortDirection = ref<'asc' | 'desc'>('asc');
+
+const toggleSortDirection = () => {
+  sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
+};
+
+const setSortField = (field: SortField) => {
+  if (sortField.value === field) {
+    toggleSortDirection();
+    return;
+  }
+  sortField.value = field;
+  sortDirection.value = 'asc';
+};
+
+const resetFilters = () => {
+  filters.manufacturer = '';
+  filters.status = '';
+  filters.brickSize = '';
+  sortField.value = 'setName';
+  sortDirection.value = 'asc';
+};
+
+const filteredSets = computed(() => {
+  let result = sets.value.slice();
+
+  if (filters.manufacturer) {
+    result = result.filter(
+      (set) => set.manufacturer?.toLowerCase() === filters.manufacturer.toLowerCase()
+    );
+  }
+  if (filters.status) {
+    result = result.filter((set) => set.status === filters.status);
+  }
+  if (filters.brickSize) {
+    result = result.filter((set) => set.brickSize === filters.brickSize);
+  }
+
+  result.sort((a, b) => {
+    const direction = sortDirection.value === 'asc' ? 1 : -1;
+    const aValue = a[sortField.value];
+    const bValue = b[sortField.value];
+
+    if (aValue === null || aValue === undefined) {
+      return 1 * direction;
+    }
+    if (bValue === null || bValue === undefined) {
+      return -1 * direction;
+    }
+    if (sortField.value === 'setName') {
+      return String(aValue).localeCompare(String(bValue)) * direction;
+    }
+    return (Number(aValue) - Number(bValue)) * direction;
+  });
+  return result;
+});
+
 const loadSets = async () => {
   try {
     const response = await fetch('/api/sets');
@@ -509,8 +636,7 @@ onMounted(() => {
 
 .content-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1.5rem;
+  gap: 1rem;
 }
 
 .card {
@@ -589,6 +715,112 @@ onMounted(() => {
   margin-bottom: 1rem;
 }
 
+.controls-card {
+  padding-bottom: 5px;
+}
+.controls-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.chip-group {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.controls-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #495c6a;
+}
+
+.chip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  font-size: 0.75rem;
+  min-width: 120px;
+  position: relative;
+}
+
+.chip select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.filter-chip span {
+  pointer-events: none;
+}
+
+.sort-chips {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.sort-chip {
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.75rem;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  flex-direction: row;
+}
+
+.sort-chip.active {
+  border-color: #ffd502;
+  background: #fff699;
+}
+
+.sort-direction {
+  font-size: 0.65rem;
+  color: #7e869a;
+}
+
+.reset-chip {
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.75rem;
+  background: #fff;
+  cursor: pointer;
+  color: #f56060;
+  position: absolute;
+  right: -2px;
+  transform: translateX(-50%);
+}
+
+.reset-chip:hover {
+  border: 1px solid rgba(247, 30, 30, 0.45);
+  background: #f7cfcf;
+  transition: filter 0.2s ease;
+}
+
+@media (max-width: 800px) {
+  .controls-bar {
+    flex-direction: column;
+  }
+}
+
 .list-header__title {
   display: flex;
   flex-direction: column;
@@ -631,6 +863,7 @@ onMounted(() => {
   border-radius: 1rem;
   background: #f8fafc;
   border: 1px solid rgba(15, 23, 42, 0.08);
+  cursor: pointer;
 }
 
 .set-card__layout {
@@ -774,8 +1007,8 @@ onMounted(() => {
 
 .set-card__meta {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
-  gap: 0.5rem;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
   margin-top: 0.8rem;
 }
 
@@ -789,6 +1022,7 @@ onMounted(() => {
 .set-card__meta dd {
   margin: 0;
   font-weight: 600;
+  font-size: 0.85em;
 }
 
 .empty {
@@ -900,8 +1134,8 @@ onMounted(() => {
 
 .image-viewer-close {
   position: absolute;
-  top: -1rem;
-  right: -1rem;
+  top: 5px;
+  right: 5px;
   background: rgba(255, 255, 255, 0.9);
 }
 </style>
