@@ -18,12 +18,12 @@ ingress_port: 8097
 ports:
   8097/tcp: 8097
 ports_description:
-  8097/tcp: "Media Library Web UI (direct)"
+  8097/tcp: "Brick Library Web UI (direct)"
 
 image: "ghcr.io/nikolausstoll/brick-library"
 
 options:
-  port: 8099
+  port: 8097
   db_path: "/data/brick-library.db"
   static_dir: "/app/public"
 

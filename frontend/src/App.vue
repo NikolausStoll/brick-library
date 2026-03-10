@@ -291,7 +291,7 @@ type BrickSet = {
   pricePerPiece: number | null;
 };
 
-const statuses: SetStatus[] = ['New', 'Building', 'Built', 'Disassembled'];
+const statuses: SetStatus[] = ['New', 'Building', 'Built', 'Disassembled', 'Sold'];
 const brickSizes = ['Diamond', 'Mini', 'Standard'];
 const manufacturers = [
   'CaDA',

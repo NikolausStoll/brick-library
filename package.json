@@ -1,6 +1,7 @@
 {
   "name": "brick-library",
   "private": true,
+  "type": "module",
   "workspaces": [
     "frontend",
     "backend"

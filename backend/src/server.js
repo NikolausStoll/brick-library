@@ -3,16 +3,17 @@ import { fileURLToPath } from 'url';
 import express from 'express';
 import Database from 'better-sqlite3';
 import { randomUUID } from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
 dotenv.config({
   path: fileURLToPath(new URL('../../.env', import.meta.url))
 });
 
-const DB_PATH = process.env.DATABASE_PATH || 'brick-library.db';
-console.log('ENV DATABASE_PATH', process.env.DATABASE_PATH);
-console.log('DATABASE_PATH', DB_PATH);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DB_PATH = process.env.DB_PATH || 'brick-library.db';
 const PORT = Number(process.env.PORT || 8097);
-
 const db = new Database(DB_PATH);
 
 db.exec(`
@@ -67,7 +68,7 @@ const sanitizeNullableBoolean = (value) => {
   return value === '1' || value === 'true' ? 1 : 0;
 };
 
-const STATUSES = new Set(['New', 'Building', 'Built', 'Disassembled']);
+const STATUSES = new Set(['New', 'Building', 'Built', 'Disassembled', 'Sold']);
 const BRICK_SIZES = new Set(['Diamond', 'Mini', 'Standard']);
 
 const toPriceCents = (value) => {
@@ -232,10 +233,18 @@ app.delete('/api/sets/:id', (req, res) => {
   res.status(204).send();
 });
 
-app.use('/api', apiRouter)
+const STATIC_DIR = process.env.STATIC_DIR || path.join(__dirname, '../../public');
+const hasStatic = fs.existsSync(path.join(STATIC_DIR, 'index.html'));
 
 if (hasStatic) {
-  app.use(express.static(STATIC_DIR))
+  app.use(express.static(STATIC_DIR));
+
+  // SPA fallback (nur wenn es keine /api route ist)
+  app.get(/^\/(?!api).*/, (req, res) => {
+    res.sendFile(path.join(STATIC_DIR, 'index.html'));
+  });
+} else {
+  console.warn(`No static frontend found. Expected index.html in: ${STATIC_DIR}`);
 }
 
 app.listen(PORT, () => {
