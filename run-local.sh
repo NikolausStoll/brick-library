@@ -1,20 +1,35 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 set -euo pipefail
 
-BACKEND_PORT=${BACKEND_PORT:-8097}
-FRONTEND_PORT=${FRONTEND_PORT:-5174}
-DATABASE_PATH=${DATABASE_PATH:-brick-library.db}
+if [[ ! -f .env ]]; then
+  echo ".env file not found;"
+  exit 1
+fi
 
-export PORT="$BACKEND_PORT"
-export DATABASE_PATH
+source_env=.env
 
-npm --prefix backend run start &
-BACKEND_PID=$!
+if [[ -f $source_env ]]; then
+  export $(grep -v '^#' "$source_env" | cut -d= -f1)
+else
+  echo "$source_env file not found; continuing with defaults"
+fi
 
-export PORT="$FRONTEND_PORT"
-npm --prefix frontend run dev &
-FRONTEND_PID=$!
+readonly CONTAINER_NAME=brick-library-local
 
-trap "kill $BACKEND_PID $FRONTEND_PID 2>/dev/null || true" INT TERM QUIT EXIT
+cleanup() {
+  if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}\$"; then
+    docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+  fi
+}
 
-wait
+trap cleanup EXIT
+
+docker build -t brick-library .
+
+cleanup
+
+docker run --name "${CONTAINER_NAME}" -p 8097:8097 \
+  --env-file .env \
+  --env PORT=8097 \
+  -v "$(pwd)/data:/data" \
+  brick-library

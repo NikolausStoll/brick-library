@@ -232,6 +232,12 @@ app.delete('/api/sets/:id', (req, res) => {
   res.status(204).send();
 });
 
+app.use('/api', apiRouter)
+
+if (hasStatic) {
+  app.use(express.static(STATIC_DIR))
+}
+
 app.listen(PORT, () => {
   console.log(`Brick Library backend listening on port ${PORT} using ${DB_PATH}`);
 });
