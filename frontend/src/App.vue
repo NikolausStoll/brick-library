@@ -145,7 +145,7 @@ const formatCents = (value: number | null) => {
   if (value === null || value === undefined) {
     return '—';
   }
-  const cents = 300/23;
+  const cents = value * 100;
   return `${cents.toFixed(3)} ct`;
 };
 

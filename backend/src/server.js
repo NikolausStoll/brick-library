@@ -72,8 +72,6 @@ const mapRow = (row) => {
     purchasePrice != null && pieceCount && pieceCount > 0
       ? purchasePrice / pieceCount
       : null;
-  console.log(purchasePrice)
-  console.log(purchasePrice)
   return {
     id: row.id,
     manufacturer: row.manufacturer,
