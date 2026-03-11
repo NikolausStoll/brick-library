@@ -81,36 +81,42 @@
           @click="startEditing(set)"
         >
           <div class="set-card__layout">
-            <div class="set-card__image-panel">
-              <div class="set-card__image-wrapper">
-                <img
-                  :src="galleryImageUrls[getImageIndex(set.id)]"
-                  :alt="`Image preview for ${set.setName}`"
-                  class="set-card__image"
-                  loading="lazy"
-                  @click.stop="openImageViewer(getImageIndex(set.id))"
-                />
-                <div class="set-card__image-controls">
-                  <button
-                    type="button"
-                    class="carousel-button"
-                    @click.stop="showPreviousImage(set.id)"
-                    :disabled="galleryImageUrls.length < 2"
-                    aria-label="Show previous image"
-                  >
-                    ‹
-                  </button>
-                  <button
-                    type="button"
-                    class="carousel-button"
-                    @click.stop="showNextImage(set.id)"
-                    :disabled="galleryImageUrls.length < 2"
-                    aria-label="Show next image"
-                  >
-                    ›
-                  </button>
-                </div>
+            <div class="set-card__image-panel" @click.stop>
+              <div v-if="getImagesForSet(set.id).length" class="image-gallery-grid">
+                <figure
+                  v-for="image in getImagesForSet(set.id)"
+                  :key="image.id"
+                  class="image-gallery-item"
+                >
+                  <img
+                    :src="image.url"
+                    :alt="`Image thumbnail for ${set.setName}`"
+                    loading="lazy"
+                  />
+                  <figcaption>{{ formatImageDate(image.createdAt) }}</figcaption>
+                </figure>
               </div>
+              <p v-else class="image-gallery-empty">
+                No images yet. Upload one to show this set.
+              </p>
+              <form class="image-upload-form" @submit.prevent="uploadImage(set.id)">
+                <label class="image-upload-input">
+                  <span>{{ getSelectedFileName(set.id) }}</span>
+                  <input
+                    :key="uploadInputResetKey[set.id] ?? 0"
+                    type="file"
+                    accept="image/*"
+                    @change="handleImageSelection(set.id, $event)"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  class="primary-button"
+                  :disabled="!imageUploads[set.id] || imageUploading[set.id]"
+                >
+                  {{ imageUploading[set.id] ? 'Uploading…' : 'Upload image' }}
+                </button>
+              </form>
             </div>
 
             <div class="set-card__details">
@@ -234,42 +240,6 @@
       </button>
     </form>
   </div>
-  <div
-    v-if="imageViewerUrl"
-    class="image-viewer-overlay"
-    role="presentation"
-    @click.self="closeImageViewer"
-  >
-    <div class="image-viewer-content">
-      <button
-        type="button"
-        class="icon-button image-viewer-close"
-        aria-label="Close image preview"
-        @click="closeImageViewer"
-      >
-        ×
-      </button>
-      <button
-        type="button"
-        class="carousel-button image-viewer-nav image-viewer-prev"
-        :disabled="galleryImageUrls.length < 2"
-        aria-label="Show previous overlay image"
-        @click.stop="showPreviousViewerImage"
-      >
-        ‹
-      </button>
-      <img :src="imageViewerUrl" alt="Fullscreen set preview" class="image-viewer-img" />
-      <button
-        type="button"
-        class="carousel-button image-viewer-nav image-viewer-next"
-        :disabled="galleryImageUrls.length < 2"
-        aria-label="Show next overlay image"
-        @click.stop="showNextViewerImage"
-      >
-        ›
-      </button>
-    </div>
-  </div>
   </main>
 </template>
 
@@ -323,68 +293,80 @@ const sets = ref<BrickSet[]>([]);
 const submitting = ref(false);
 const isFormOverlayVisible = ref(false);
 
-const galleryImageUrls = [
-  'https://www.lego.com/cdn/cs/set/assets/blte9491c3a7e6325bd/21348.png?format=webply&fit=bounds&quality=75&width=1200&height=1200&dpr=1',
-  'https://www.lego.com/cdn/cs/set/assets/blt2f2f0537c1806c36/21348_Box5_v39.png?format=webply&fit=bounds&quality=75&width=1200&height=1200&dpr=1'
-];
-const setImageIndexes = ref<Record<string, number>>({});
-
-const getImageIndex = (setId: string) => {
-  return setImageIndexes.value[setId] ?? 0;
+type SetImage = {
+  id: string;
+  setId: string;
+  fileName: string;
+  source: string;
+  originalUrl: string | null;
+  createdAt: string;
+  url: string;
 };
 
-const updateImageIndex = (setId: string, direction: number) => {
-  if (galleryImageUrls.length === 0) {
+const setImages = reactive<Record<string, SetImage[]>>({});
+const imageUploads = reactive<Record<string, File | null>>({});
+const imageUploading = reactive<Record<string, boolean>>({});
+const uploadInputResetKey = reactive<Record<string, number>>({});
+
+const getImagesForSet = (setId: string) => setImages[setId] ?? [];
+const getSelectedFileName = (setId: string) => imageUploads[setId]?.name ?? 'Choose file';
+const formatImageDate = (value: string) =>
+  new Date(value).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  });
+
+const handleImageSelection = (setId: string, event: Event) => {
+  const target = event.target as HTMLInputElement;
+  imageUploads[setId] = target.files?.[0] ?? null;
+};
+
+const resetUploadInput = (setId: string) => {
+  uploadInputResetKey[setId] = (uploadInputResetKey[setId] ?? 0) + 1;
+};
+
+const fetchSetImages = async (setId: string) => {
+  try {
+    const response = await fetch(`/api/sets/${setId}/images`);
+    if (!response.ok) {
+      throw new Error('Unable to load set images');
+    }
+    setImages[setId] = await response.json();
+  } catch (error) {
+    console.error('Failed to load images for set', setId, error);
+    setImages[setId] = [];
+  }
+};
+
+const refreshImagesForAllSets = async () => {
+  await Promise.all(sets.value.map((set) => fetchSetImages(set.id)));
+};
+
+const uploadImage = async (setId: string) => {
+  const file = imageUploads[setId];
+  if (!file) {
     return;
   }
-
-  const currentIndex = getImageIndex(setId);
-  const nextIndex =
-    (currentIndex + direction + galleryImageUrls.length) % galleryImageUrls.length;
-
-  setImageIndexes.value = {
-    ...setImageIndexes.value,
-    [setId]: nextIndex
-  };
-};
-
-const showNextImage = (setId: string) => updateImageIndex(setId, 1);
-const showPreviousImage = (setId: string) => updateImageIndex(setId, -1);
-
-const imageViewerIndex = ref<number | null>(null);
-
-const openImageViewer = (index: number) => {
-  imageViewerIndex.value = index;
-};
-
-const closeImageViewer = () => {
-  imageViewerIndex.value = null;
-};
-
-const imageViewerUrl = computed(() => {
-  if (imageViewerIndex.value === null) {
-    return null;
+  imageUploading[setId] = true;
+  try {
+    const formData = new FormData();
+    formData.append('image', file);
+    const response = await fetch(`/api/sets/${setId}/images`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!response.ok) {
+      throw new Error('Upload failed');
+    }
+    imageUploads[setId] = null;
+    resetUploadInput(setId);
+    await fetchSetImages(setId);
+  } catch (error) {
+    console.error('Unable to upload image', error);
+  } finally {
+    imageUploading[setId] = false;
   }
-  const validIndex =
-    (imageViewerIndex.value + galleryImageUrls.length) % galleryImageUrls.length;
-  return galleryImageUrls[validIndex];
-});
-
-const showNextViewerImage = () => {
-  if (imageViewerIndex.value === null) {
-    return;
-  }
-  imageViewerIndex.value =
-    (imageViewerIndex.value + 1) % galleryImageUrls.length;
-};
-
-const showPreviousViewerImage = () => {
-  if (imageViewerIndex.value === null) {
-    return;
-  }
-  imageViewerIndex.value =
-    (imageViewerIndex.value - 1 + galleryImageUrls.length) %
-    galleryImageUrls.length;
 };
 
 type FormPayload = {
@@ -546,6 +528,7 @@ const loadSets = async () => {
       throw new Error('Unable to load sets');
     }
     sets.value = await response.json();
+    await refreshImagesForAllSets();
   } catch (error) {
     console.error(error);
   }
@@ -875,46 +858,76 @@ onMounted(() => {
 .set-card__image-panel {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
   width: 300px;
 }
 
-.set-card__image {
-  width: 100%;
-  height: 100%;
+.image-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 0.5rem;
+}
+
+.image-gallery-item {
+  margin: 0;
   border-radius: 0.75rem;
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
-  object-fit: contain;
-  cursor: pointer;
-  padding: 3px;
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: #fff;
+  display: flex;
+  flex-direction: column;
 }
 
-.set-card__image-wrapper {
-  position: relative;
+.image-gallery-item img {
   width: 100%;
-  height: 250px;
+  height: 100px;
+  object-fit: cover;
+  display: block;
 }
 
-.set-card__image-controls {
-  position: absolute;
-  inset: 0;
+.image-gallery-item figcaption {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #475569;
+}
+
+.image-gallery-empty {
+  font-size: 0.85rem;
+  color: #64748b;
+  text-align: center;
+}
+
+.image-upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.image-upload-input {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.5rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: 0.75rem;
+  border: 1px dashed rgba(15, 23, 42, 0.3);
+  font-size: 0.85rem;
+  background: #f8fafc;
+  cursor: pointer;
+}
+
+.image-upload-input input[type='file'] {
+  position: absolute;
+  inset: 0;
   opacity: 0;
-  transition: opacity 0.2s ease;
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.25), rgba(15, 23, 42, 0.01));
-  pointer-events: none;
+  cursor: pointer;
 }
 
-.set-card__image-wrapper:hover .set-card__image-controls {
-  opacity: 1;
-}
-
-.set-card__image-controls button {
-  pointer-events: auto;
+.image-upload-form .primary-button {
+  font-size: 0.85rem;
+  padding: 0.5rem;
 }
 
 .carousel-button {

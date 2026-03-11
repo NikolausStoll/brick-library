@@ -5,6 +5,7 @@ import Database from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import multer from 'multer';
 
 dotenv.config({
   path: fileURLToPath(new URL('../../.env', import.meta.url))
@@ -14,6 +15,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DB_PATH = process.env.DB_PATH || 'brick-library.db';
 const PORT = Number(process.env.PORT || 8097);
+const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || '/data/uploads');
+
+try {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+} catch (error) {
+  console.error(`Failed to create upload directory ${UPLOAD_DIR}`, error);
+  process.exit(1);
+}
+
 const db = new Database(DB_PATH);
 
 db.exec(`
@@ -44,6 +54,27 @@ db.exec(`
   )
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS set_images (
+    id TEXT PRIMARY KEY,
+    setId TEXT NOT NULL,
+    fileName TEXT NOT NULL,
+    source TEXT NOT NULL CHECK (source IN ('upload', 'scrape')),
+    originalUrl TEXT,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (setId) REFERENCES sets(id)
+  )
+`);
+
+const insertImageStmt = db.prepare(
+  'INSERT INTO set_images (id, setId, fileName, source, originalUrl, createdAt) VALUES (?, ?, ?, ?, ?, ?)'
+);
+const selectImagesBySetIdStmt = db.prepare(
+  'SELECT * FROM set_images WHERE setId = ? ORDER BY createdAt DESC'
+);
+const selectImageByIdStmt = db.prepare('SELECT * FROM set_images WHERE id = ?');
+const deleteImageStmt = db.prepare('DELETE FROM set_images WHERE id = ?');
+
 const tableInfo = db.prepare('PRAGMA table_info(sets)').all();
 const hasBrickSizeColumn = tableInfo.some((column) => column.name === 'brickSize');
 
@@ -70,6 +101,21 @@ const sanitizeNullableBoolean = (value) => {
 
 const STATUSES = new Set(['New', 'Building', 'Built', 'Disassembled', 'Sold']);
 const BRICK_SIZES = new Set(['Diamond', 'Mini', 'Standard']);
+const getImagePath = (setId, fileName) => path.join(UPLOAD_DIR, setId, fileName);
+const getImageUrl = (setId, fileName) => path.posix.join('/uploads', setId, fileName);
+const CACHE_CONTROL_HEADER = 'public, max-age=31536000, immutable';
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const setDir = path.join(UPLOAD_DIR, req.params.setId);
+    fs.mkdir(setDir, { recursive: true }, (err) => cb(err, setDir));
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${randomUUID()}${ext}`);
+  }
+});
+const upload = multer({ storage });
 
 const toPriceCents = (value) => {
   if (value === null || value === undefined || value === '') {
@@ -116,6 +162,16 @@ const mapRow = (row) => {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   };
+};
+
+const serializeImageRow = (row) => ({
+  ...row,
+  url: getImageUrl(row.setId, row.fileName)
+});
+
+const findImageForSet = (setId, imageId) => {
+  const image = selectImageByIdStmt.get(imageId);
+  return image && image.setId === setId ? image : null;
 };
 
 const BASE_COLUMNS = [
@@ -190,6 +246,14 @@ const preparePayload = (raw) => {
   return payload;
 };
 
+const ensureSetExists = (req, res, next) => {
+  const existing = selectByIdStmt.get(req.params.setId);
+  if (!existing) {
+    return res.status(404).json({ error: 'Set not found' });
+  }
+  next();
+};
+
 app.get('/api/sets', (req, res) => {
   const rows = selectAllStmt.all();
   res.json(rows.map(mapRow));
@@ -230,6 +294,75 @@ app.delete('/api/sets/:id', (req, res) => {
   if (changes === 0) {
     return res.status(404).json({ error: 'Set not found' });
   }
+  res.status(204).send();
+});
+
+app.post(
+  '/api/sets/:setId/images',
+  ensureSetExists,
+  upload.single('image'),
+  (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'image file is required' });
+    }
+    const { setId } = req.params;
+    const fileName = req.file.filename;
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    insertImageStmt.run(id, setId, fileName, 'upload', null, now);
+    res.status(201).json(
+      serializeImageRow({
+        id,
+        setId,
+        fileName,
+        source: 'upload',
+        originalUrl: null,
+        createdAt: now
+      })
+    );
+  }
+);
+
+app.get('/api/sets/:setId/images', (req, res) => {
+  const { setId } = req.params;
+  const existing = selectByIdStmt.get(setId);
+  if (!existing) {
+    return res.status(404).json({ error: 'Set not found' });
+  }
+  const rows = selectImagesBySetIdStmt.all(setId);
+  res.json(rows.map(serializeImageRow));
+});
+
+app.get('/api/sets/:setId/images/:imageId/file', ensureSetExists, (req, res) => {
+  const { setId, imageId } = req.params;
+  const image = findImageForSet(setId, imageId);
+  if (!image) {
+    return res.status(404).json({ error: 'Image not found' });
+  }
+  const filePath = getImagePath(setId, image.fileName);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'Image file not found' });
+  }
+  res.set('Cache-Control', CACHE_CONTROL_HEADER);
+  res.sendFile(filePath);
+});
+
+app.delete('/api/sets/:setId/images/:imageId', ensureSetExists, (req, res) => {
+  const { setId, imageId } = req.params;
+  const image = findImageForSet(setId, imageId);
+  if (!image) {
+    return res.status(404).json({ error: 'Image not found' });
+  }
+  const filePath = getImagePath(setId, image.fileName);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'Image file not found' });
+  }
+  try {
+    fs.unlinkSync(filePath);
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to remove image file' });
+  }
+  deleteImageStmt.run(imageId);
   res.status(204).send();
 });
 
