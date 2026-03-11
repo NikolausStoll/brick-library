@@ -254,7 +254,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 
-type SetStatus = 'New' | 'Building' | 'Built' | 'Disassembled';
+type SetStatus = 'New' | 'Building' | 'Built' | 'Disassembled' | 'Sold';
 
 type BrickSet = {
   id: string;

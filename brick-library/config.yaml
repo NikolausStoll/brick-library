@@ -26,8 +26,10 @@ options:
   port: 8097
   db_path: "/data/brick-library.db"
   static_dir: "/app/public"
+  upload_dir: "/data/uploads"
 
 schema:
   port: int(1024,65535)
   db_path: str
   static_dir: str
+  upload_dir: str

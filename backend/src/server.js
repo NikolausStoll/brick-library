@@ -26,9 +26,31 @@ try {
 
 const db = new Database(DB_PATH);
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS sets (
-    id TEXT PRIMARY KEY,
+const BASE_COLUMNS = [
+  'manufacturer',
+  'setName',
+  'setNumber',
+  'legoReferenceNumber',
+  'brickSize',
+  'purchasePrice',
+  'pieceCount',
+  'status',
+  'hasOriginalBox',
+  'boxedWith',
+  'hasPrintedPhoto',
+  'notes',
+  'instructionsUrl',
+  'retiredProduct',
+  'theme',
+  'year',
+  'externalSource',
+  'externalId',
+  'lastEnrichedAt'
+];
+
+const CREATE_SETS_TABLE_SQL = `
+  CREATE TABLE sets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     manufacturer TEXT NOT NULL,
     setName TEXT NOT NULL,
     setNumber TEXT,
@@ -41,7 +63,6 @@ db.exec(`
     boxedWith TEXT,
     hasPrintedPhoto INTEGER NOT NULL DEFAULT 0,
     notes TEXT,
-    imageUrl TEXT,
     instructionsUrl TEXT,
     retiredProduct INTEGER,
     theme TEXT,
@@ -52,35 +73,26 @@ db.exec(`
     createdAt TEXT NOT NULL,
     updatedAt TEXT NOT NULL
   )
-`);
+`;
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS set_images (
+const CREATE_SET_IMAGES_TABLE_SQL = `
+  CREATE TABLE set_images (
     id TEXT PRIMARY KEY,
-    setId TEXT NOT NULL,
+    setId INTEGER NOT NULL,
     fileName TEXT NOT NULL,
     source TEXT NOT NULL CHECK (source IN ('upload', 'scrape')),
     originalUrl TEXT,
     createdAt TEXT NOT NULL,
     FOREIGN KEY (setId) REFERENCES sets(id)
   )
-`);
+`;
 
-const insertImageStmt = db.prepare(
-  'INSERT INTO set_images (id, setId, fileName, source, originalUrl, createdAt) VALUES (?, ?, ?, ?, ?, ?)'
-);
-const selectImagesBySetIdStmt = db.prepare(
-  'SELECT * FROM set_images WHERE setId = ? ORDER BY createdAt DESC'
-);
-const selectImageByIdStmt = db.prepare('SELECT * FROM set_images WHERE id = ?');
-const deleteImageStmt = db.prepare('DELETE FROM set_images WHERE id = ?');
+const INSERT_SET_SQL = `INSERT INTO sets (${BASE_COLUMNS.join(', ')}, createdAt, updatedAt) VALUES (${BASE_COLUMNS.map(
+  (column) => `@${column}`
+).join(', ')}, @createdAt, @updatedAt)`;
 
-const tableInfo = db.prepare('PRAGMA table_info(sets)').all();
-const hasBrickSizeColumn = tableInfo.some((column) => column.name === 'brickSize');
-
-if (!hasBrickSizeColumn) {
-  db.exec("ALTER TABLE sets ADD COLUMN brickSize TEXT NOT NULL DEFAULT 'Standard'");
-}
+const INSERT_SET_IMAGE_SQL =
+  'INSERT INTO set_images (id, setId, fileName, source, originalUrl, createdAt) VALUES (@id, @setId, @fileName, @source, @originalUrl, @createdAt)';
 
 const app = express();
 app.use(express.json());
@@ -101,8 +113,8 @@ const sanitizeNullableBoolean = (value) => {
 
 const STATUSES = new Set(['New', 'Building', 'Built', 'Disassembled', 'Sold']);
 const BRICK_SIZES = new Set(['Diamond', 'Mini', 'Standard']);
-const getImagePath = (setId, fileName) => path.join(UPLOAD_DIR, setId, fileName);
-const getImageUrl = (setId, fileName) => path.posix.join('/uploads', setId, fileName);
+const getImagePath = (setId, fileName) => path.join(UPLOAD_DIR, String(setId), fileName);
+const getImageUrl = (setId, fileName) => path.posix.join('/uploads', String(setId), fileName);
 const CACHE_CONTROL_HEADER = 'public, max-age=31536000, immutable';
 
 const storage = multer.diskStorage({
@@ -116,6 +128,11 @@ const storage = multer.diskStorage({
   }
 });
 const upload = multer({ storage });
+app.use('/uploads', express.static(UPLOAD_DIR, {
+  setHeaders: (res) => {
+    res.set('Cache-Control', CACHE_CONTROL_HEADER);
+  }
+}));
 
 const toPriceCents = (value) => {
   if (value === null || value === undefined || value === '') {
@@ -127,6 +144,40 @@ const toPriceCents = (value) => {
     return null;
   }
   return Math.round(normalized * 100);
+};
+
+const preparePayload = (raw, { keepUpdatedAt = false } = {}) => {
+  const now = new Date().toISOString();
+  const incomingStatus = raw.status?.trim();
+  const status = STATUSES.has(incomingStatus) ? incomingStatus : 'New';
+  return {
+    manufacturer: raw.manufacturer?.trim() ?? '',
+    setName: raw.setName?.trim() ?? '',
+    setNumber: raw.setNumber?.trim() || null,
+    legoReferenceNumber: raw.legoReferenceNumber?.trim() || null,
+    brickSize: BRICK_SIZES.has(raw.brickSize) ? raw.brickSize : 'Standard',
+    purchasePrice: toPriceCents(raw.purchasePrice),
+    pieceCount:
+      raw.pieceCount != null
+        ? Number.isNaN(Number(raw.pieceCount))
+          ? null
+          : Number(raw.pieceCount)
+        : null,
+    status,
+    hasOriginalBox: sanitizeBoolean(raw.hasOriginalBox ?? false),
+    boxedWith: raw.boxedWith?.trim() || null,
+    hasPrintedPhoto: sanitizeBoolean(raw.hasPrintedPhoto ?? false),
+    notes: raw.notes?.trim() || null,
+    instructionsUrl: raw.instructionsUrl?.trim() || null,
+    retiredProduct: sanitizeNullableBoolean(raw.retiredProduct),
+    theme: raw.theme?.trim() || null,
+    year: raw.year != null ? Number(raw.year) : null,
+    externalSource: raw.externalSource || 'manual',
+    externalId: raw.externalId?.trim() || null,
+    lastEnrichedAt: raw.lastEnrichedAt?.trim() || null,
+    createdAt: raw.createdAt || now,
+    updatedAt: keepUpdatedAt ? raw.updatedAt || now : now
+  };
 };
 
 const mapRow = (row) => {
@@ -151,7 +202,6 @@ const mapRow = (row) => {
     boxedWith: row.boxedWith,
     hasPrintedPhoto: Boolean(row.hasPrintedPhoto),
     notes: row.notes,
-    imageUrl: row.imageUrl,
     instructionsUrl: row.instructionsUrl,
     retiredProduct: row.retiredProduct === null ? null : Boolean(row.retiredProduct),
     theme: row.theme,
@@ -170,81 +220,132 @@ const serializeImageRow = (row) => ({
 });
 
 const findImageForSet = (setId, imageId) => {
+  const numericSetId = Number(setId);
   const image = selectImageByIdStmt.get(imageId);
-  return image && image.setId === setId ? image : null;
+  return image && image.setId === numericSetId ? image : null;
 };
 
-const BASE_COLUMNS = [
-  'manufacturer',
-  'setName',
-  'setNumber',
-  'legoReferenceNumber',
-  'brickSize',
-  'purchasePrice',
-  'pieceCount',
-  'status',
-  'hasOriginalBox',
-  'boxedWith',
-  'hasPrintedPhoto',
-  'notes',
-  'imageUrl',
-  'instructionsUrl',
-  'retiredProduct',
-  'theme',
-  'year',
-  'externalSource',
-  'externalId',
-  'lastEnrichedAt'
-];
+const migrateLegacySchema = (existingSets, existingImages, hadSetImagesTable) => {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN TRANSACTION');
+  try {
+    if (hadSetImagesTable) {
+      db.exec('ALTER TABLE set_images RENAME TO set_images_old');
+    }
+    db.exec('ALTER TABLE sets RENAME TO sets_old');
+    db.exec(CREATE_SETS_TABLE_SQL);
+    db.exec(CREATE_SET_IMAGES_TABLE_SQL);
+    const insertSetMigrationStmt = db.prepare(INSERT_SET_SQL);
+    const insertImageMigrationStmt = db.prepare(INSERT_SET_IMAGE_SQL);
+    const idMap = new Map();
+    for (const row of existingSets) {
+      const payload = preparePayload(row, { keepUpdatedAt: true });
+      const { lastInsertRowid } = insertSetMigrationStmt.run(payload);
+      idMap.set(row.id, lastInsertRowid);
+    }
+    if (hadSetImagesTable) {
+      for (const image of existingImages) {
+        const newSetId = idMap.get(image.setId);
+        if (newSetId == null) {
+          continue;
+        }
+        insertImageMigrationStmt.run({
+          id: image.id,
+          setId: newSetId,
+          fileName: image.fileName,
+          source: image.source,
+          originalUrl: image.originalUrl,
+          createdAt: image.createdAt
+        });
+      }
+      db.exec('DROP TABLE set_images_old');
+    }
+    db.exec('DROP TABLE sets_old');
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+};
 
-const insertSetStmt = db.prepare(
-  `INSERT INTO sets (id, ${BASE_COLUMNS.join(', ')}, createdAt, updatedAt) VALUES (@id, ${BASE_COLUMNS.map((c) => `@${c}`).join(', ')}, @createdAt, @updatedAt)`
+const rebuildSetImagesTable = (existingImages) => {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN TRANSACTION');
+  try {
+    db.exec('ALTER TABLE set_images RENAME TO set_images_old');
+    db.exec(CREATE_SET_IMAGES_TABLE_SQL);
+    const insertStmt = db.prepare(INSERT_SET_IMAGE_SQL);
+    for (const image of existingImages) {
+      insertStmt.run({
+        id: image.id,
+        setId: Number(image.setId),
+        fileName: image.fileName,
+        source: image.source,
+        originalUrl: image.originalUrl,
+        createdAt: image.createdAt
+      });
+    }
+    db.exec('DROP TABLE set_images_old');
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+};
+
+const ensureSchema = () => {
+  const setsTableInfo = db.prepare("PRAGMA table_info('sets')").all();
+  const setImagesTableInfo = db.prepare("PRAGMA table_info('set_images')").all();
+  const hasLegacyIdColumn = setsTableInfo.some(
+    (column) => column.name === 'id' && column.type.toUpperCase() !== 'INTEGER'
+  );
+  const hasImageUrlColumn = setsTableInfo.some((column) => column.name === 'imageUrl');
+  const needsSetsMigration =
+    setsTableInfo.length > 0 && (hasLegacyIdColumn || hasImageUrlColumn);
+
+  if (needsSetsMigration) {
+    const existingSets = db.prepare('SELECT * FROM sets').all();
+    const existingImages =
+      setImagesTableInfo.length > 0 ? db.prepare('SELECT * FROM set_images').all() : [];
+    migrateLegacySchema(existingSets, existingImages, setImagesTableInfo.length > 0);
+  } else if (setsTableInfo.length === 0) {
+    db.exec(CREATE_SETS_TABLE_SQL);
+  }
+
+  if (!needsSetsMigration) {
+    const currentSetImagesInfo = db.prepare("PRAGMA table_info('set_images')").all();
+    if (currentSetImagesInfo.length === 0) {
+      db.exec(CREATE_SET_IMAGES_TABLE_SQL);
+    } else if (
+      currentSetImagesInfo.some(
+        (column) => column.name === 'setId' && column.type.toUpperCase() !== 'INTEGER'
+      )
+    ) {
+      const existingImages = db.prepare('SELECT * FROM set_images').all();
+      rebuildSetImagesTable(existingImages);
+    }
+  }
+};
+
+ensureSchema();
+
+const insertImageStmt = db.prepare(INSERT_SET_IMAGE_SQL);
+const selectImagesBySetIdStmt = db.prepare(
+  'SELECT * FROM set_images WHERE setId = ? ORDER BY createdAt DESC'
 );
-
+const selectImageByIdStmt = db.prepare('SELECT * FROM set_images WHERE id = ?');
+const deleteImageStmt = db.prepare('DELETE FROM set_images WHERE id = ?');
+const insertSetStmt = db.prepare(INSERT_SET_SQL);
 const selectAllStmt = db.prepare('SELECT * FROM sets ORDER BY createdAt DESC');
 const selectByIdStmt = db.prepare('SELECT * FROM sets WHERE id = ?');
 const deleteStmt = db.prepare('DELETE FROM sets WHERE id = ?');
-
 const updateSetStmt = db.prepare(
-  `UPDATE sets SET ${BASE_COLUMNS.map((c) => `${c} = @${c}`).join(', ')}, updatedAt = @updatedAt WHERE id = @id`
+  `UPDATE sets SET ${BASE_COLUMNS.map((column) => `${column} = @${column}`).join(', ')}, updatedAt = @updatedAt WHERE id = @id`
 );
-
-const preparePayload = (raw) => {
-  const now = new Date().toISOString();
-  const incomingStatus = raw.status?.trim();
-  const status = STATUSES.has(incomingStatus) ? incomingStatus : 'New';
-  const payload = {
-    manufacturer: raw.manufacturer?.trim() ?? '',
-    setName: raw.setName?.trim() ?? '',
-    setNumber: raw.setNumber?.trim() || null,
-    legoReferenceNumber: raw.legoReferenceNumber?.trim() || null,
-    brickSize: BRICK_SIZES.has(raw.brickSize) ? raw.brickSize : 'Standard',
-    purchasePrice: toPriceCents(raw.purchasePrice),
-    pieceCount:
-      raw.pieceCount != null
-        ? Number.isNaN(Number(raw.pieceCount))
-          ? null
-          : Number(raw.pieceCount)
-        : null,
-    status,
-    hasOriginalBox: sanitizeBoolean(raw.hasOriginalBox ?? false),
-    boxedWith: raw.boxedWith?.trim() || null,
-    hasPrintedPhoto: sanitizeBoolean(raw.hasPrintedPhoto ?? false),
-    notes: raw.notes?.trim() || null,
-    imageUrl: raw.imageUrl?.trim() || null,
-    instructionsUrl: raw.instructionsUrl?.trim() || null,
-    retiredProduct: sanitizeNullableBoolean(raw.retiredProduct),
-    theme: raw.theme?.trim() || null,
-    year: raw.year != null ? Number(raw.year) : null,
-    externalSource: raw.externalSource || 'manual',
-    externalId: raw.externalId?.trim() || null,
-    lastEnrichedAt: raw.lastEnrichedAt?.trim() || null,
-    createdAt: raw.createdAt || now,
-    updatedAt: now
-  };
-
-  return payload;
-};
 
 const ensureSetExists = (req, res, next) => {
   const existing = selectByIdStmt.get(req.params.setId);
@@ -271,10 +372,9 @@ app.post('/api/sets', (req, res) => {
   if (!req.body.manufacturer || !req.body.setName) {
     return res.status(400).json({ error: 'manufacturer and setName are required' });
   }
-  const id = randomUUID();
   const payload = preparePayload({ ...req.body, createdAt: new Date().toISOString() });
-  insertSetStmt.run({ id, ...payload, updatedAt: payload.updatedAt });
-  const created = selectByIdStmt.get(id);
+  const { lastInsertRowid } = insertSetStmt.run(payload);
+  const created = selectByIdStmt.get(lastInsertRowid);
   res.status(201).json(mapRow(created));
 });
 
@@ -305,11 +405,18 @@ app.post(
     if (!req.file) {
       return res.status(400).json({ error: 'image file is required' });
     }
-    const { setId } = req.params;
+    const setId = Number(req.params.setId);
     const fileName = req.file.filename;
     const now = new Date().toISOString();
     const id = randomUUID();
-    insertImageStmt.run(id, setId, fileName, 'upload', null, now);
+    insertImageStmt.run({
+      id,
+      setId,
+      fileName,
+      source: 'upload',
+      originalUrl: null,
+      createdAt: now
+    });
     res.status(201).json(
       serializeImageRow({
         id,
@@ -336,6 +443,7 @@ app.get('/api/sets/:setId/images', (req, res) => {
 app.get('/api/sets/:setId/images/:imageId/file', ensureSetExists, (req, res) => {
   const { setId, imageId } = req.params;
   const image = findImageForSet(setId, imageId);
+
   if (!image) {
     return res.status(404).json({ error: 'Image not found' });
   }
