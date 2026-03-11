@@ -93,6 +93,14 @@
                     :alt="`Image thumbnail for ${set.setName}`"
                     loading="lazy"
                   />
+                  <button
+                    type="button"
+                    class="image-gallery-delete"
+                    :disabled="imageDeleting[image.id]"
+                    @click.stop="deleteImage(set.id, image.id)"
+                  >
+                    {{ imageDeleting[image.id] ? 'Removing…' : 'Delete' }}
+                  </button>
                   <figcaption>{{ formatImageDate(image.createdAt) }}</figcaption>
                 </figure>
               </div>
@@ -306,6 +314,7 @@ type SetImage = {
 const setImages = reactive<Record<string, SetImage[]>>({});
 const imageUploads = reactive<Record<string, File | null>>({});
 const imageUploading = reactive<Record<string, boolean>>({});
+const imageDeleting = reactive<Record<string, boolean>>({});
 const uploadInputResetKey = reactive<Record<string, number>>({});
 
 const getImagesForSet = (setId: string) => setImages[setId] ?? [];
@@ -366,6 +375,23 @@ const uploadImage = async (setId: string) => {
     console.error('Unable to upload image', error);
   } finally {
     imageUploading[setId] = false;
+  }
+};
+
+const deleteImage = async (setId: string, imageId: string) => {
+  imageDeleting[imageId] = true;
+  try {
+    const response = await fetch(`/api/sets/${setId}/images/${imageId}`, {
+      method: 'DELETE'
+    });
+    if (!response.ok) {
+      throw new Error('Unable to delete image');
+    }
+    await fetchSetImages(setId);
+  } catch (error) {
+    console.error('Failed to delete image', error);
+  } finally {
+    imageDeleting[imageId] = false;
   }
 };
 
@@ -876,6 +902,8 @@ onMounted(() => {
   background: #fff;
   display: flex;
   flex-direction: column;
+  gap: 0.25rem;
+  position: relative;
 }
 
 .image-gallery-item img {
@@ -891,6 +919,30 @@ onMounted(() => {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #475569;
+}
+
+.image-gallery-delete {
+  border: none;
+  border-radius: 999px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: #f87171;
+  color: #fff;
+  cursor: pointer;
+  align-self: flex-end;
+  margin-right: 0.2rem;
+  transition: transform 0.2s ease;
+}
+
+.image-gallery-delete:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.image-gallery-delete:not(:disabled):hover {
+  transform: translateY(-1px);
 }
 
 .image-gallery-empty {
