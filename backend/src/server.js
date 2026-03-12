@@ -26,7 +26,8 @@ try {
   process.exit(1);
 }
 
-const IMAGE_QUALITY = Number(process.env.IMAGE_QUALITY || 75);
+const IMAGE_QUALITY = Number(process.env.IMAGE_QUALITY || 80);
+const IMAGE_MAX_DIMENSION = Number(process.env.IMAGE_MAX_DIMENSION || 2400);
 
 const optimizeImage = async (inputBuffer) => {
   const image = sharp(inputBuffer);
@@ -36,7 +37,18 @@ const optimizeImage = async (inputBuffer) => {
   if (metadata.format === 'gif') {
     return { buffer: await image.gif().toBuffer(), ext: '.gif' };
   }
-  return { buffer: await image.webp({ quality: IMAGE_QUALITY }).toBuffer(), ext: '.webp' };
+  return {
+    buffer: await image
+      .resize({
+        width: IMAGE_MAX_DIMENSION,
+        height: IMAGE_MAX_DIMENSION,
+        fit: 'inside',
+        withoutEnlargement: true
+      })
+      .webp({ quality: IMAGE_QUALITY })
+      .toBuffer(),
+    ext: '.webp'
+  };
 };
 
 const db = new Database(DB_PATH);
@@ -57,10 +69,7 @@ const BASE_COLUMNS = [
   'instructionsUrl',
   'retiredProduct',
   'theme',
-  'year',
-  'externalSource',
-  'externalId',
-  'lastEnrichedAt'
+  'year'
 ];
 
 const CREATE_SETS_TABLE_SQL = `
@@ -82,9 +91,6 @@ const CREATE_SETS_TABLE_SQL = `
     retiredProduct INTEGER,
     theme TEXT,
     year INTEGER,
-    externalSource TEXT,
-    externalId TEXT,
-    lastEnrichedAt TEXT,
     createdAt TEXT NOT NULL,
     updatedAt TEXT NOT NULL
   )
@@ -188,9 +194,6 @@ const preparePayload = (raw) => {
     retiredProduct: sanitizeNullableBoolean(raw.retiredProduct),
     theme: raw.theme?.trim() || null,
     year: raw.year != null ? Number(raw.year) : null,
-    externalSource: raw.externalSource || 'manual',
-    externalId: raw.externalId?.trim() || null,
-    lastEnrichedAt: raw.lastEnrichedAt?.trim() || null,
     createdAt: raw.createdAt || now,
     updatedAt: now
   };
@@ -222,9 +225,6 @@ const mapRow = (row) => {
     retiredProduct: row.retiredProduct === null ? null : Boolean(row.retiredProduct),
     theme: row.theme,
     year: row.year,
-    externalSource: row.externalSource,
-    externalId: row.externalId,
-    lastEnrichedAt: row.lastEnrichedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   };
@@ -469,19 +469,48 @@ app.post('/api/sets/:setId/images/scrape', ensureSetExists, async (req, res) => 
     }
   }
 
+  const bestSrcFromImg = ($, el) => {
+    const $el = $(el);
+    if ($el.hasClass('zoomImg')) return null;
+
+    const dataLarge = $el.attr('data-large_image');
+    if (dataLarge) return dataLarge;
+
+    const dataSrc = $el.attr('data-src');
+    if (dataSrc) return dataSrc;
+
+    const srcset = $el.attr('srcset');
+    if (srcset) {
+      let best = null;
+      let bestW = 0;
+      for (const entry of srcset.split(',')) {
+        const parts = entry.trim().split(/\s+/);
+        const w = parseInt(parts[1], 10) || 0;
+        if (w > bestW) { bestW = w; best = parts[0]; }
+      }
+      if (best) return best;
+    }
+
+    return $el.attr('src') || null;
+  };
+
   let imgSrcs = [];
 
   if (hasHtmlMode) {
     const $ = cheerio.load(rawHtml);
     $('img').each((_, el) => {
-      const src = $(el).attr('src');
+      const src = bestSrcFromImg($, el);
       if (src) imgSrcs.push(src);
     });
   } else {
     let html;
     try {
       const response = await fetch(pageUrl, {
-        headers: { 'User-Agent': 'BrickLibrary/1.0' }
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5'
+        }
       });
       if (!response.ok) {
         return res.status(502).json({ error: `Failed to fetch page: HTTP ${response.status}` });
@@ -497,10 +526,12 @@ app.post('/api/sets/:setId/images/scrape', ensureSetExists, async (req, res) => 
       return res.status(400).json({ error: `Selector "${normalizedSelector}" matched no elements` });
     }
     container.find('img').each((_, el) => {
-      const src = $(el).attr('src');
+      const src = bestSrcFromImg($, el);
       if (src) imgSrcs.push(src);
     });
   }
+
+  imgSrcs = [...new Set(imgSrcs)];
 
   if (imgSrcs.length === 0) {
     return res.json({ found: 0, downloaded: 0, skipped: 0, images: [] });

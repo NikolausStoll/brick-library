@@ -1,9 +1,5 @@
 <template>
   <main class="page">
-    <section class="hero">
-      <p class="eyebrow">Brick Library</p>
-    </section>
-
   <section class="content-grid">
     <section class="card controls-card">
       <div class="controls-bar">
@@ -13,8 +9,17 @@
             <span>{{ filters.manufacturer || 'Manufacturer' }}</span>
             <select v-model="filters.manufacturer">
               <option value="">All</option>
-              <option v-for="manufacturer in manufacturers" :key="manufacturer" :value="manufacturer">
+              <option v-for="manufacturer in activeManufacturers" :key="manufacturer" :value="manufacturer">
                 {{ manufacturer }}
+              </option>
+            </select>
+          </div>
+          <div class="chip filter-chip">
+            <span>{{ filters.theme || 'Theme' }}</span>
+            <select v-model="filters.theme">
+              <option value="">All</option>
+              <option v-for="theme in activeThemes" :key="theme" :value="theme">
+                {{ theme }}
               </option>
             </select>
           </div>
@@ -60,11 +65,38 @@
         </div>
       </div>
     </section>
+    <section v-if="filteredSets.length > 0" class="card stats-card">
+      <dl class="stats-grid">
+        <div>
+          <dt>Total Sets</dt>
+          <dd>{{ filteredSets.length }}</dd>
+        </div>
+        <div>
+          <dt>Total Price</dt>
+          <dd>{{ formatPrice(collectionStats.totalPrice) }}</dd>
+        </div>
+        <div>
+          <dt>Total Pieces</dt>
+          <dd>{{ collectionStats.totalPieces?.toLocaleString() ?? '—' }}</dd>
+        </div>
+        <div>
+          <dt>Avg. Price / Piece</dt>
+          <dd>{{ formatCents(collectionStats.avgPricePerPiece) }}</dd>
+        </div>
+        <div>
+          <dt>New Sets</dt>
+          <dd>{{ collectionStats.newSets }}</dd>
+        </div>
+        <div>
+          <dt>Built Sets</dt>
+          <dd>{{ collectionStats.builtSets }}</dd>
+        </div>
+      </dl>
+    </section>
     <section class="card list-card">
       <div class="list-header">
           <div class="list-header__title">
             <h2>Collection</h2>
-            <span class="count">{{ filteredSets.length }} sets</span>
           </div>
         <button type="button" class="primary-button" @click="openAddForm">
           Add a set
@@ -133,9 +165,9 @@
             <div class="set-card__details">
               <div class="set-card__header">
                 <p class="set-card__manufacturer">{{ set.manufacturer }}</p>
-                <p class="set-card__status">{{ set.status }}</p>
+                <p class="set-card__status" :data-status="set.status">{{ set.status }}</p>
               </div>
-              <p class="set-card__name">{{ set.setName }}</p>
+              <p class="set-card__name">{{ set.setName }}<span v-if="set.year" class="set-card__year">({{ set.year }})</span></p>
           <p class="set-card__number" v-if="set.setNumber || set.legoReferenceNumber">
             {{ formatSetNumber(set) }}
           </p>
@@ -149,7 +181,7 @@
                   <dd>{{ set.pieceCount ?? '—' }}</dd>
                 </div>
                 <div>
-                  <dt>Price per piece</dt>
+                  <dt>Piece Price</dt>
                   <dd>{{ formatCents(set.pricePerPiece) }}</dd>
                 </div>
                 <div>
@@ -157,11 +189,42 @@
                   <dd>{{ set.brickSize }}</dd>
                 </div>
               </dl>
+              <div class="set-card__chips" v-if="set.hasOriginalBox || set.retiredProduct || set.hasPrintedPhoto || set.instructionsUrl">
+                <a
+                  v-if="set.instructionsUrl"
+                  class="detail-chip detail-chip--instructions"
+                  :class="{ active: filters.hasInstructions }"
+                  :href="set.instructionsUrl"
+                  target="_blank"
+                  rel="noopener"
+                  @click.stop
+                >Instructions</a>
+                <span
+                  v-if="set.retiredProduct"
+                  class="detail-chip detail-chip--retired"
+                  :class="{ active: filters.retiredProduct }"
+                  @click.stop="toggleChipFilter('retiredProduct')"
+                >Retired</span>
+                <span class="set-card__chips-spacer"></span>
+                <span
+                  v-if="set.hasOriginalBox"
+                  class="detail-chip detail-chip--info"
+                  :class="{ active: filters.hasOriginalBox }"
+                  @click.stop="toggleChipFilter('hasOriginalBox')"
+                >Box</span>
+                <span
+                  v-if="set.hasPrintedPhoto"
+                  class="detail-chip detail-chip--info"
+                  :class="{ active: filters.hasPrintedPhoto }"
+                  @click.stop="toggleChipFilter('hasPrintedPhoto')"
+                >Photo</span>
+              </div>
             </div>
           </div>
         </article>
       </div>
     </section>
+
   </section>
 
   <div
@@ -186,7 +249,19 @@
           &times;
         </button>
       </div>
-      <div class="form-grid">
+      <div v-if="isEditing" class="form-tabs">
+        <button
+          type="button"
+          :class="{ active: editTab === 'general' }"
+          @click="editTab = 'general'"
+        >General</button>
+        <button
+          type="button"
+          :class="{ active: editTab === 'details' }"
+          @click="editTab = 'details'"
+        >Details</button>
+      </div>
+      <div v-show="!isEditing || editTab === 'general'" class="form-grid">
         <label>
           Manufacturer
           <input
@@ -235,12 +310,51 @@
             type="text"
             inputmode="decimal"
             placeholder="199,99"
-            @input="handleDecimalInput('purchasePrice', $event.target.value)"
+            @input="handleDecimalInput('purchasePrice', ($event.target as HTMLInputElement).value)"
           />
         </label>
         <label>
           Piece count
           <input v-model="form.pieceCount" type="number" min="0" placeholder="7541" />
+        </label>
+      </div>
+      <div v-if="isEditing" v-show="editTab === 'details'" class="form-grid">
+        <label class="toggle-label">
+          Has original box
+          <label class="toggle-switch">
+            <input v-model="form.hasOriginalBox" type="checkbox" />
+            <span class="toggle-slider"></span>
+          </label>
+        </label>
+        <label class="toggle-label">
+          Has printed photo
+          <label class="toggle-switch">
+            <input v-model="form.hasPrintedPhoto" type="checkbox" />
+            <span class="toggle-slider"></span>
+          </label>
+        </label>
+        <label class="toggle-label">
+          Retired product
+          <label class="toggle-switch">
+            <input v-model="form.retiredProduct" type="checkbox" />
+            <span class="toggle-slider"></span>
+          </label>
+        </label>
+        <label>
+          Theme
+          <input v-model="form.theme" type="text" placeholder="Star Wars" />
+        </label>
+        <label>
+          Year
+          <input v-model="form.year" type="number" min="1900" max="2100" placeholder="2024" />
+        </label>
+        <label>
+          Instructions URL
+          <input v-model="form.instructionsUrl" type="url" placeholder="https://..." />
+        </label>
+        <label class="full-width">
+          Notes
+          <textarea v-model="form.notes" rows="3" placeholder="Any additional notes…"></textarea>
         </label>
       </div>
       <button type="submit" :disabled="submitting">{{ isEditing ? 'Update set' : 'Save set' }}</button>
@@ -500,6 +614,13 @@ type BrickSet = {
   purchasePrice: number | null;
   pieceCount: number | null;
   pricePerPiece: number | null;
+  hasOriginalBox: boolean;
+  hasPrintedPhoto: boolean;
+  year: number | null;
+  notes: string | null;
+  instructionsUrl: string | null;
+  retiredProduct: boolean | null;
+  theme: string | null;
 };
 
 const statuses: SetStatus[] = ['New', 'Building', 'Built', 'Disassembled', 'Sold'];
@@ -531,6 +652,12 @@ const sortOptions: Array<{ key: SortField; label: string }> = [
 ];
 
 const sets = ref<BrickSet[]>([]);
+const activeManufacturers = computed(() =>
+  [...new Set(sets.value.map((s) => s.manufacturer))].sort()
+);
+const activeThemes = computed(() =>
+  [...new Set(sets.value.map((s) => s.theme).filter(Boolean))].sort() as string[]
+);
 const submitting = ref(false);
 const isFormOverlayVisible = ref(false);
 const formOverlayRef = ref<HTMLElement | null>(null);
@@ -909,6 +1036,13 @@ type FormPayload = {
   status: SetStatus;
   purchasePrice: string;
   pieceCount: string;
+  hasOriginalBox: boolean;
+  hasPrintedPhoto: boolean;
+  year: string;
+  notes: string;
+  instructionsUrl: string;
+  retiredProduct: boolean;
+  theme: string;
 };
 
 const createEmptyForm = (): FormPayload => ({
@@ -919,7 +1053,14 @@ const createEmptyForm = (): FormPayload => ({
   brickSize: 'Standard',
   status: statuses[0],
   purchasePrice: '',
-  pieceCount: ''
+  pieceCount: '',
+  hasOriginalBox: false,
+  hasPrintedPhoto: false,
+  year: '',
+  notes: '',
+  instructionsUrl: '',
+  retiredProduct: false,
+  theme: ''
 });
 
 const form = ref<FormPayload>(createEmptyForm());
@@ -970,7 +1111,7 @@ const formatSetNumber = (set: BrickSet) => {
   if (set.legoReferenceNumber) {
     return set.setNumber
       ? `#${set.legoReferenceNumber} (#${set.setNumber})`
-      : set.legoReferenceNumber;
+      : `#${set.legoReferenceNumber}`;
   }
   return set.setNumber ? `#${set.setNumber}` : '';
 };
@@ -992,8 +1133,13 @@ const formatCents = (value: number | null) => {
 
 const filters = reactive({
   manufacturer: '',
+  theme: '',
   status: '',
-  brickSize: ''
+  brickSize: '',
+  hasOriginalBox: false,
+  retiredProduct: false,
+  hasPrintedPhoto: false,
+  hasInstructions: false
 });
 
 const sortField = ref<SortField>('setName');
@@ -1014,10 +1160,19 @@ const setSortField = (field: SortField) => {
 
 const resetFilters = () => {
   filters.manufacturer = '';
+  filters.theme = '';
   filters.status = '';
   filters.brickSize = '';
+  filters.hasOriginalBox = false;
+  filters.retiredProduct = false;
+  filters.hasPrintedPhoto = false;
+  filters.hasInstructions = false;
   sortField.value = 'setName';
   sortDirection.value = 'asc';
+};
+
+const toggleChipFilter = (key: 'hasOriginalBox' | 'retiredProduct' | 'hasPrintedPhoto' | 'hasInstructions') => {
+  filters[key] = !filters[key];
 };
 
 const filteredSets = computed(() => {
@@ -1028,11 +1183,26 @@ const filteredSets = computed(() => {
       (set) => set.manufacturer?.toLowerCase() === filters.manufacturer.toLowerCase()
     );
   }
+  if (filters.theme) {
+    result = result.filter((set) => set.theme === filters.theme);
+  }
   if (filters.status) {
     result = result.filter((set) => set.status === filters.status);
   }
   if (filters.brickSize) {
     result = result.filter((set) => set.brickSize === filters.brickSize);
+  }
+  if (filters.hasOriginalBox) {
+    result = result.filter((set) => set.hasOriginalBox);
+  }
+  if (filters.retiredProduct) {
+    result = result.filter((set) => set.retiredProduct);
+  }
+  if (filters.hasPrintedPhoto) {
+    result = result.filter((set) => set.hasPrintedPhoto);
+  }
+  if (filters.hasInstructions) {
+    result = result.filter((set) => !!set.instructionsUrl);
   }
 
   result.sort((a, b) => {
@@ -1054,6 +1224,24 @@ const filteredSets = computed(() => {
   return result;
 });
 
+const collectionStats = computed(() => {
+  const all = filteredSets.value;
+  const newSets = all.filter((s) => s.status === 'New' || s.status === 'Building').length;
+  const builtSets = all.filter((s) => s.status === 'Built' || s.status === 'Disassembled' || s.status === 'Sold').length;
+  const priced = all.filter((s) => s.purchasePrice != null);
+  const totalPrice = priced.reduce((sum, s) => sum + s.purchasePrice!, 0);
+  const totalPieces = all.reduce((sum, s) => sum + (s.pieceCount ?? 0), 0);
+  const pricedPieces = priced.reduce((sum, s) => sum + (s.pieceCount ?? 0), 0);
+  const avgPricePerPiece = pricedPieces > 0 ? totalPrice / pricedPieces : null;
+  return {
+    newSets,
+    builtSets,
+    totalPrice: priced.length > 0 ? totalPrice : null,
+    totalPieces: totalPieces > 0 ? totalPieces : null,
+    avgPricePerPiece
+  };
+});
+
 const loadSets = async () => {
   try {
     const response = await fetch('/api/sets');
@@ -1067,8 +1255,11 @@ const loadSets = async () => {
   }
 };
 
+const editTab = ref<'general' | 'details'>('general');
+
 const startEditing = (set: BrickSet) => {
   editingId.value = set.id;
+  editTab.value = 'general';
   form.value = {
     manufacturer: set.manufacturer,
     setName: set.setName,
@@ -1078,7 +1269,14 @@ const startEditing = (set: BrickSet) => {
     status: set.status,
     purchasePrice:
       set.purchasePrice != null ? formatWithComma(set.purchasePrice, 2) : '',
-    pieceCount: set.pieceCount != null ? String(set.pieceCount) : ''
+    pieceCount: set.pieceCount != null ? String(set.pieceCount) : '',
+    hasOriginalBox: set.hasOriginalBox ?? false,
+    hasPrintedPhoto: set.hasPrintedPhoto ?? false,
+    year: set.year != null ? String(set.year) : '',
+    notes: set.notes ?? '',
+    instructionsUrl: set.instructionsUrl ?? '',
+    retiredProduct: set.retiredProduct ?? false,
+    theme: set.theme ?? ''
   };
   isFormOverlayVisible.value = true;
   nextTick(() => formOverlayRef.value?.focus());
@@ -1090,7 +1288,7 @@ const saveSet = async () => {
   }
   submitting.value = true;
   try {
-    const payload = {
+    const payload: Record<string, unknown> = {
       manufacturer: form.value.manufacturer,
       setName: form.value.setName,
       setNumber: form.value.setNumber || null,
@@ -1103,6 +1301,15 @@ const saveSet = async () => {
         form.value.purchasePrice === '' ? null : parseDecimalString(form.value.purchasePrice),
       pieceCount: form.value.pieceCount === '' ? null : Number(form.value.pieceCount)
     };
+    if (editingId.value) {
+      payload.hasOriginalBox = form.value.hasOriginalBox;
+      payload.hasPrintedPhoto = form.value.hasPrintedPhoto;
+      payload.year = form.value.year === '' ? null : Number(form.value.year);
+      payload.notes = form.value.notes || null;
+      payload.instructionsUrl = form.value.instructionsUrl || null;
+      payload.retiredProduct = form.value.retiredProduct;
+      payload.theme = form.value.theme || null;
+    }
 
     const targetId = editingId.value;
     const response = await fetch(targetId ? `/api/sets/${targetId}` : '/api/sets', {
@@ -1247,6 +1454,98 @@ onMounted(() => {
   gap: 0.75rem 1rem;
 }
 
+.form-grid .full-width {
+  grid-column: 1 / -1;
+}
+
+.form-card textarea {
+  width: 100%;
+  padding: 0.65rem;
+  margin-top: 0.15rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.form-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 1rem;
+  border-bottom: 2px solid rgba(15, 23, 42, 0.1);
+}
+
+.form-tabs button {
+  flex: 1;
+  padding: 0.6rem 1rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  background: none;
+  font-size: 0.9rem;
+  color: #64748b;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  border-radius: 0px;
+}
+
+.form-tabs button.active {
+  color: #0f172a;
+  border-bottom-color: #ffd502;
+  font-weight: 600;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: #cbd5e1;
+  border-radius: 24px;
+  transition: background 0.2s;
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: #ffd502;
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(20px);
+}
+
 @media (max-width: 600px) {
   .form-grid {
     grid-template-columns: 1fr;
@@ -1263,6 +1562,30 @@ onMounted(() => {
 
 .controls-card {
   padding-bottom: 5px;
+}
+
+.stats-card {
+  padding: 1rem 1.25rem;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1.25rem;
+  margin: 0;
+}
+
+.stats-grid dt {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+}
+
+.stats-grid dd {
+  margin: 0;
+  font-weight: 600;
+  font-size: 1rem;
 }
 .controls-bar {
   display: flex;
@@ -1415,7 +1738,7 @@ onMounted(() => {
 .set-card__layout {
   display: grid;
   grid-template-columns: 300px 1fr;
-  align-items: start;
+  align-items: stretch;
 }
 
 .set-card__image-panel {
@@ -1865,16 +2188,50 @@ onMounted(() => {
 }
 
 .set-card__status {
-  font-size: 0.8rem;
-  padding: 0.15rem 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.set-card__status[data-status="New"] {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.set-card__status[data-status="Building"] {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.set-card__status[data-status="Built"] {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.set-card__status[data-status="Disassembled"] {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.set-card__status[data-status="Sold"] {
+  background: #f1f5f9;
+  color: #64748b;
 }
 
 .set-card__name {
   font-size: 1.1rem;
   margin: 0;
   font-weight: 600;
+}
+
+.set-card__year {
+  font-weight: 400;
+  color: #64748b;
+  margin-left: 0.35em;
+  font-size: 0.95em;
 }
 
 .set-card__number {
@@ -1902,6 +2259,75 @@ onMounted(() => {
   margin: 0;
   font-weight: 600;
   font-size: 0.85em;
+}
+
+.set-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: auto;
+  padding-top: 0.5rem;
+}
+
+.set-card__chips-spacer {
+  flex: 1;
+}
+
+.detail-chip {
+  display: inline-block;
+  width: fit-content;
+  font-size: 0.55rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  color: #64748b;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.detail-chip:hover {
+  background: rgba(15, 23, 42, 0.12);
+  color: #334155;
+}
+
+.detail-chip.active {
+  background: #ffd502;
+  color: #0f172a;
+}
+
+.detail-chip--instructions {
+  background: rgba(233, 111, 20, 0.12);
+  color: #e96f14;
+}
+
+.detail-chip--instructions:hover {
+  background: rgba(233, 111, 20, 0.22);
+  color: #c75d0e;
+}
+
+.detail-chip--retired {
+  background: rgba(189, 0, 0, 0.1);
+  color: #bd0000;
+}
+
+.detail-chip--retired:hover {
+  background: rgba(189, 0, 0, 0.2);
+  color: #9a0000;
+}
+
+.detail-chip--info {
+  background: rgba(30, 64, 175, 0.1);
+  color: #1e40af;
+}
+
+.detail-chip--info:hover {
+  background: rgba(30, 64, 175, 0.18);
+  color: #1a3794;
 }
 
 .empty {
