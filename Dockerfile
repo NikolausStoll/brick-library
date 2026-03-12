@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   python3 make g++ sqlite3 \
   && rm -rf /var/lib/apt/lists/*
 
-ENV PORT=8097
+ENV PORT=8098
 ENV DB_PATH=/data/brick.db
 ENV STATIC_DIR=/app/public
 ENV NODE_ENV=production
@@ -36,5 +36,5 @@ COPY backend ./backend
 COPY --from=builder /app/frontend/dist ./public
 COPY docker/entrypoint.js /app/entrypoint.js
 
-EXPOSE 8097
+EXPOSE 8098
 CMD ["node", "/app/entrypoint.js"]

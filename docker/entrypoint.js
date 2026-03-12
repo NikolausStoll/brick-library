@@ -22,7 +22,7 @@ const resolveSetting = (envName, fallback, keys = []) => {
   return process.env[envName] ?? fallback
 }
 
-const port = resolveSetting('PORT', '8097', ['port'])
+const port = resolveSetting('PORT', '8098', ['port'])
 const dbPath = resolveSetting('DB_PATH', '/data/brick-library.db', ['db_path', 'dbPath'])
 const staticDir = resolveSetting('STATIC_DIR', '/app/public', ['static_dir', 'staticDir'])
 

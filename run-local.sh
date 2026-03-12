@@ -28,8 +28,8 @@ docker build -t brick-library .
 
 cleanup
 
-docker run --name "${CONTAINER_NAME}" -p 8097:8097 \
+docker run --name "${CONTAINER_NAME}" -p 8098:8098 \
   --env-file .env \
-  --env PORT=8097 \
+  --env PORT=8098 \
   -v "$(pwd)/data:/data" \
   brick-library
