@@ -81,35 +81,52 @@
           @click="startEditing(set)"
         >
           <div class="set-card__layout">
-            <div class="set-card__image-panel">
-              <div class="set-card__image-wrapper">
+            <div class="set-card__image-panel" @click.stop>
+              <div v-if="getImagesForSet(set.id).length" class="set-card__image-wrapper">
                 <img
-                  :src="galleryImageUrls[getImageIndex(set.id)]"
+                  :src="getCurrentImage(set.id)?.url"
                   :alt="`Image preview for ${set.setName}`"
                   class="set-card__image"
                   loading="lazy"
-                  @click.stop="openImageViewer(getImageIndex(set.id))"
+                  @click="openImageViewer(set.id)"
                 />
-                <div class="set-card__image-controls">
+                <div class="set-card__image-controls" v-if="getImagesForSet(set.id).length > 1">
                   <button
                     type="button"
                     class="carousel-button"
                     @click.stop="showPreviousImage(set.id)"
-                    :disabled="galleryImageUrls.length < 2"
                     aria-label="Show previous image"
                   >
-                    ‹
+                    &#8249;
                   </button>
                   <button
                     type="button"
                     class="carousel-button"
                     @click.stop="showNextImage(set.id)"
-                    :disabled="galleryImageUrls.length < 2"
                     aria-label="Show next image"
                   >
-                    ›
+                    &#8250;
                   </button>
                 </div>
+                <button
+                  type="button"
+                  class="manage-images-gear"
+                  aria-label="Manage images"
+                  @click.stop="openImageManager(set.id)"
+                >
+                  &#9881;
+                </button>
+              </div>
+              <div v-else class="set-card__image-empty">
+                <span>No images yet</span>
+                <button
+                  type="button"
+                  class="manage-images-gear"
+                  aria-label="Manage images"
+                  @click.stop="openImageManager(set.id)"
+                >
+                  &#9881;
+                </button>
               </div>
             </div>
 
@@ -153,6 +170,9 @@
     role="dialog"
     aria-modal="true"
     @click.self="closeFormOverlay"
+    @keydown.esc="closeFormOverlay"
+    tabindex="-1"
+    ref="formOverlayRef"
   >
     <form class="card form-card overlay-card" @submit.prevent="saveSet">
       <div class="overlay-header">
@@ -227,56 +247,247 @@
       <button
         v-if="isEditing"
         type="button"
-        class="text-button"
-        @click="closeFormOverlay"
+        class="delete-set-button"
+        :class="{ confirming: deleteSetConfirming }"
+        :disabled="deletingSet"
+        @click="deleteSet(editingId!)"
       >
-        Cancel
+        {{ deletingSet ? 'Deleting…' : deleteSetConfirming ? 'Are you sure?' : 'Delete set' }}
       </button>
     </form>
   </div>
   <div
-    v-if="imageViewerUrl"
+    v-if="imageViewerSetId !== null"
     class="image-viewer-overlay"
     role="presentation"
     @click.self="closeImageViewer"
   >
-    <div class="image-viewer-content">
+    <div class="image-viewer-content" :class="{ zoomed: imageViewerZoomed }">
       <button
         type="button"
         class="icon-button image-viewer-close"
         aria-label="Close image preview"
         @click="closeImageViewer"
       >
-        ×
+        &times;
       </button>
       <button
         type="button"
         class="carousel-button image-viewer-nav image-viewer-prev"
-        :disabled="galleryImageUrls.length < 2"
+        v-if="getImagesForSet(imageViewerSetId).length > 1"
         aria-label="Show previous overlay image"
         @click.stop="showPreviousViewerImage"
       >
-        ‹
+        &#8249;
       </button>
-      <img :src="imageViewerUrl" alt="Fullscreen set preview" class="image-viewer-img" />
+      <img
+        :src="imageViewerUrl"
+        alt="Fullscreen set preview"
+        class="image-viewer-img"
+        :class="{ dragging: zoomDragging }"
+        :style="imageViewerZoomed ? zoomedImageStyle : undefined"
+        @mousedown.prevent.stop="onZoomMouseDown"
+        @mousemove.prevent="onZoomMouseMove"
+        @mouseup.prevent.stop="onZoomMouseUp"
+        @mouseleave="onZoomMouseLeave"
+      />
       <button
         type="button"
         class="carousel-button image-viewer-nav image-viewer-next"
-        :disabled="galleryImageUrls.length < 2"
+        v-if="getImagesForSet(imageViewerSetId).length > 1"
         aria-label="Show next overlay image"
         @click.stop="showNextViewerImage"
       >
-        ›
+        &#8250;
       </button>
+      <span
+        v-if="getImagesForSet(imageViewerSetId).length > 1"
+        class="image-viewer-counter"
+      >
+        {{ imageViewerIndex + 1 }} / {{ getImagesForSet(imageViewerSetId).length }}
+      </span>
+    </div>
+  </div>
+
+  <div
+    v-if="imageManagerSetId !== null"
+    class="overlay"
+    role="dialog"
+    aria-modal="true"
+    @click.self="closeImageManager"
+  >
+    <div class="card overlay-card image-manager-card">
+      <div class="overlay-header">
+        <h2>Manage images</h2>
+        <button
+          type="button"
+          class="icon-button"
+          aria-label="Close image manager"
+          @click="closeImageManager"
+        >
+          &times;
+        </button>
+      </div>
+
+      <form class="image-upload-form" @submit.prevent="uploadImages(imageManagerSetId!)">
+        <label class="image-upload-input">
+          <span>{{ getSelectedFileName(imageManagerSetId!) }}</span>
+          <input
+            :key="uploadInputResetKey[imageManagerSetId!] ?? 0"
+            type="file"
+            accept="image/*"
+            multiple
+            @change="handleImageSelection(imageManagerSetId!, $event)"
+          />
+        </label>
+        <button
+          type="submit"
+          class="primary-button"
+          :disabled="!imageUploads[imageManagerSetId!]?.length || imageUploading[imageManagerSetId!]"
+        >
+          {{ imageUploading[imageManagerSetId!] ? 'Uploading…' : 'Upload' }}
+        </button>
+      </form>
+
+      <details class="scrape-section">
+        <summary class="scrape-toggle">Scrape images</summary>
+        <form class="scrape-form" @submit.prevent="scrapeImages(imageManagerSetId!)">
+          <div class="scrape-mode-tabs">
+            <button
+              type="button"
+              class="scrape-mode-tab"
+              :class="{ active: scrapeMode === 'html' }"
+              @click="scrapeMode = 'html'"
+            >
+              Paste HTML
+            </button>
+            <button
+              type="button"
+              class="scrape-mode-tab"
+              :class="{ active: scrapeMode === 'url' }"
+              @click="scrapeMode = 'url'"
+            >
+              Fetch URL
+            </button>
+          </div>
+
+          <template v-if="scrapeMode === 'html'">
+            <label>
+              HTML containing &lt;img&gt; tags
+              <textarea
+                v-model="scrapeForm.rawHtml"
+                rows="5"
+                placeholder='<div class="gallery">&#10;  <img src="https://..." />&#10;  <img src="https://..." />&#10;</div>'
+                required
+              ></textarea>
+            </label>
+            <label>
+              Base URL <span class="label-hint">(optional, for relative src)</span>
+              <input
+                v-model="scrapeForm.baseUrl"
+                type="url"
+                placeholder="https://example.com"
+              />
+            </label>
+          </template>
+
+          <template v-else>
+            <label>
+              Page URL
+              <input
+                v-model="scrapeForm.pageUrl"
+                type="url"
+                placeholder="https://example.com/product-page"
+                required
+              />
+            </label>
+            <label>
+              Container CSS selector
+              <input
+                v-model="scrapeForm.containerSelector"
+                type="text"
+                placeholder=".gallery-container"
+                required
+              />
+            </label>
+          </template>
+
+          <button
+            type="submit"
+            class="primary-button"
+            :disabled="scrapeLoading"
+          >
+            {{ scrapeLoading ? 'Scraping…' : 'Scrape' }}
+          </button>
+          <div v-if="scrapeResult" class="scrape-result">
+            Found {{ scrapeResult.found }}, downloaded {{ scrapeResult.downloaded }}, skipped {{ scrapeResult.skipped }}
+          </div>
+          <div v-if="scrapeError" class="scrape-error">{{ scrapeError }}</div>
+        </form>
+      </details>
+
+      <div v-if="getImagesForSet(imageManagerSetId!).length" class="image-manager-list">
+        <div
+          v-for="(image, index) in getImagesForSet(imageManagerSetId!)"
+          :key="image.id"
+          class="image-manager-item"
+        >
+          <img :src="image.url" :alt="image.fileName" />
+          <div class="image-manager-item-info">
+            <span class="image-manager-item-date">{{ formatImageDate(image.createdAt) }}</span>
+            <span class="image-manager-item-source">{{ image.source }}</span>
+          </div>
+          <div class="image-manager-item-actions">
+            <div class="image-manager-sort-buttons">
+              <button
+                type="button"
+                class="image-sort-button"
+                :disabled="index === 0"
+                aria-label="Move up"
+                @click="moveImage(imageManagerSetId!, index, index - 1)"
+              >
+                &#9650;
+              </button>
+              <button
+                type="button"
+                class="image-sort-button"
+                :disabled="index === getImagesForSet(imageManagerSetId!).length - 1"
+                aria-label="Move down"
+                @click="moveImage(imageManagerSetId!, index, index + 1)"
+              >
+                &#9660;
+              </button>
+            </div>
+            <button
+              type="button"
+              class="image-manager-delete"
+              :disabled="imageDeleting[image.id]"
+              @click="deleteImage(imageManagerSetId!, image.id)"
+            >
+              {{ imageDeleting[image.id] ? '…' : 'Delete' }}
+            </button>
+          </div>
+        </div>
+        <button
+          type="button"
+          class="delete-all-button"
+          :class="{ confirming: deleteAllConfirming }"
+          :disabled="deletingAllImages"
+          @click="deleteAllImages(imageManagerSetId!)"
+        >
+          {{ deletingAllImages ? 'Deleting…' : deleteAllConfirming ? 'Are you sure?' : 'Delete all images' }}
+        </button>
+      </div>
+      <p v-else class="image-gallery-empty">No images uploaded yet.</p>
     </div>
   </div>
   </main>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 
-type SetStatus = 'New' | 'Building' | 'Built' | 'Disassembled';
+type SetStatus = 'New' | 'Building' | 'Built' | 'Disassembled' | 'Sold';
 
 type BrickSet = {
   id: string;
@@ -322,69 +533,371 @@ const sortOptions: Array<{ key: SortField; label: string }> = [
 const sets = ref<BrickSet[]>([]);
 const submitting = ref(false);
 const isFormOverlayVisible = ref(false);
+const formOverlayRef = ref<HTMLElement | null>(null);
 
-const galleryImageUrls = [
-  'https://www.lego.com/cdn/cs/set/assets/blte9491c3a7e6325bd/21348.png?format=webply&fit=bounds&quality=75&width=1200&height=1200&dpr=1',
-  'https://www.lego.com/cdn/cs/set/assets/blt2f2f0537c1806c36/21348_Box5_v39.png?format=webply&fit=bounds&quality=75&width=1200&height=1200&dpr=1'
-];
-const setImageIndexes = ref<Record<string, number>>({});
+type SetImage = {
+  id: string;
+  setId: string;
+  fileName: string;
+  source: string;
+  originalUrl: string | null;
+  sortOrder: number;
+  createdAt: string;
+  url: string;
+};
 
+const setImages = reactive<Record<string, SetImage[]>>({});
+const imageUploads = reactive<Record<string, File[]>>({});
+const imageUploading = reactive<Record<string, boolean>>({});
+const imageDeleting = reactive<Record<string, boolean>>({});
+const uploadInputResetKey = reactive<Record<string, number>>({});
+const setImageIndexes = reactive<Record<string, number>>({});
+
+const imageViewerSetId = ref<string | null>(null);
+const imageViewerIndex = ref(0);
+const imageViewerZoomed = ref(false);
+const zoomOrigin = reactive({ x: 50, y: 50 });
+const zoomPan = reactive({ x: 0, y: 0 });
+const zoomDragStart = reactive({ mouseX: 0, mouseY: 0, panX: 0, panY: 0 });
+const imageManagerSetId = ref<string | null>(null);
+
+const getImagesForSet = (setId: string) => setImages[setId] ?? [];
 const getImageIndex = (setId: string) => {
-  return setImageIndexes.value[setId] ?? 0;
+  const images = getImagesForSet(setId);
+  if (images.length === 0) return 0;
+  return (setImageIndexes[setId] ?? 0) % images.length;
+};
+const getCurrentImage = (setId: string) => {
+  const images = getImagesForSet(setId);
+  return images.length > 0 ? images[getImageIndex(setId)] : null;
+};
+const getSelectedFileName = (setId: string) => {
+  const files = imageUploads[setId];
+  if (!files || files.length === 0) return 'Choose files';
+  if (files.length === 1) return files[0].name;
+  return `${files.length} files selected`;
+};
+const formatImageDate = (value: string) =>
+  new Date(value).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  });
+
+const showNextImage = (setId: string) => {
+  const images = getImagesForSet(setId);
+  if (images.length < 2) return;
+  setImageIndexes[setId] = ((setImageIndexes[setId] ?? 0) + 1) % images.length;
+};
+const showPreviousImage = (setId: string) => {
+  const images = getImagesForSet(setId);
+  if (images.length < 2) return;
+  setImageIndexes[setId] = ((setImageIndexes[setId] ?? 0) - 1 + images.length) % images.length;
 };
 
-const updateImageIndex = (setId: string, direction: number) => {
-  if (galleryImageUrls.length === 0) {
-    return;
-  }
-
-  const currentIndex = getImageIndex(setId);
-  const nextIndex =
-    (currentIndex + direction + galleryImageUrls.length) % galleryImageUrls.length;
-
-  setImageIndexes.value = {
-    ...setImageIndexes.value,
-    [setId]: nextIndex
-  };
+const openImageViewer = (setId: string) => {
+  imageViewerSetId.value = setId;
+  imageViewerIndex.value = getImageIndex(setId);
 };
-
-const showNextImage = (setId: string) => updateImageIndex(setId, 1);
-const showPreviousImage = (setId: string) => updateImageIndex(setId, -1);
-
-const imageViewerIndex = ref<number | null>(null);
-
-const openImageViewer = (index: number) => {
-  imageViewerIndex.value = index;
-};
-
 const closeImageViewer = () => {
-  imageViewerIndex.value = null;
+  imageViewerSetId.value = null;
+  imageViewerZoomed.value = false;
+  resetZoomState();
 };
 
-const imageViewerUrl = computed(() => {
-  if (imageViewerIndex.value === null) {
-    return null;
+const handleViewerKeydown = (event: KeyboardEvent) => {
+  if (imageViewerSetId.value === null) return;
+  if (event.key === 'Escape') {
+    closeImageViewer();
+  } else if (event.key === 'ArrowRight') {
+    showNextViewerImage();
+  } else if (event.key === 'ArrowLeft') {
+    showPreviousViewerImage();
   }
-  const validIndex =
-    (imageViewerIndex.value + galleryImageUrls.length) % galleryImageUrls.length;
-  return galleryImageUrls[validIndex];
+};
+
+watch(imageViewerSetId, (newVal, oldVal) => {
+  if (newVal !== null && oldVal === null) {
+    window.addEventListener('keydown', handleViewerKeydown);
+  } else if (newVal === null && oldVal !== null) {
+    window.removeEventListener('keydown', handleViewerKeydown);
+  }
 });
 
-const showNextViewerImage = () => {
-  if (imageViewerIndex.value === null) {
-    return;
-  }
-  imageViewerIndex.value =
-    (imageViewerIndex.value + 1) % galleryImageUrls.length;
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleViewerKeydown);
+});
+
+const ZOOM_SCALE = 2.5;
+const zoomDragging = ref(false);
+const zoomDidDrag = ref(false);
+
+const resetZoomState = () => {
+  zoomOrigin.x = 50;
+  zoomOrigin.y = 50;
+  zoomPan.x = 0;
+  zoomPan.y = 0;
+  zoomDragging.value = false;
+  zoomDidDrag.value = false;
 };
 
-const showPreviousViewerImage = () => {
-  if (imageViewerIndex.value === null) {
+const onZoomMouseDown = (event: MouseEvent) => {
+  if (!imageViewerZoomed.value) {
+    const img = event.currentTarget as HTMLElement;
+    const rect = img.getBoundingClientRect();
+    zoomOrigin.x = ((event.clientX - rect.left) / rect.width) * 100;
+    zoomOrigin.y = ((event.clientY - rect.top) / rect.height) * 100;
+    zoomPan.x = 0;
+    zoomPan.y = 0;
+    imageViewerZoomed.value = true;
     return;
   }
-  imageViewerIndex.value =
-    (imageViewerIndex.value - 1 + galleryImageUrls.length) %
-    galleryImageUrls.length;
+  zoomDragging.value = true;
+  zoomDidDrag.value = false;
+  zoomDragStart.mouseX = event.clientX;
+  zoomDragStart.mouseY = event.clientY;
+  zoomDragStart.panX = zoomPan.x;
+  zoomDragStart.panY = zoomPan.y;
+};
+
+const onZoomMouseMove = (event: MouseEvent) => {
+  if (!zoomDragging.value) return;
+  const dx = event.clientX - zoomDragStart.mouseX;
+  const dy = event.clientY - zoomDragStart.mouseY;
+  if (!zoomDidDrag.value && Math.abs(dx) + Math.abs(dy) > 4) {
+    zoomDidDrag.value = true;
+  }
+  zoomPan.x = zoomDragStart.panX + dx / ZOOM_SCALE;
+  zoomPan.y = zoomDragStart.panY + dy / ZOOM_SCALE;
+};
+
+const onZoomMouseUp = () => {
+  if (zoomDragging.value && !zoomDidDrag.value) {
+    imageViewerZoomed.value = false;
+    resetZoomState();
+  }
+  zoomDragging.value = false;
+  zoomDidDrag.value = false;
+};
+
+const onZoomMouseLeave = () => {
+  zoomDragging.value = false;
+  zoomDidDrag.value = false;
+};
+
+const zoomedImageStyle = computed(() => ({
+  transformOrigin: `${zoomOrigin.x}% ${zoomOrigin.y}%`,
+  transform: `scale(${ZOOM_SCALE}) translate(${zoomPan.x}px, ${zoomPan.y}px)`
+}));
+
+const imageViewerUrl = computed(() => {
+  const setId = imageViewerSetId.value;
+  if (setId === null) return undefined;
+  const images = getImagesForSet(setId);
+  if (images.length === 0) return undefined;
+  return images[imageViewerIndex.value % images.length]?.url;
+});
+const showNextViewerImage = () => {
+  const setId = imageViewerSetId.value;
+  if (setId === null) return;
+  const images = getImagesForSet(setId);
+  if (images.length < 2) return;
+  imageViewerZoomed.value = false;
+  imageViewerIndex.value = (imageViewerIndex.value + 1) % images.length;
+};
+const showPreviousViewerImage = () => {
+  const setId = imageViewerSetId.value;
+  if (setId === null) return;
+  const images = getImagesForSet(setId);
+  if (images.length < 2) return;
+  imageViewerZoomed.value = false;
+  imageViewerIndex.value = (imageViewerIndex.value - 1 + images.length) % images.length;
+};
+
+const openImageManager = (setId: string) => {
+  imageManagerSetId.value = setId;
+  scrapeResult.value = null;
+  scrapeError.value = null;
+};
+const closeImageManager = () => {
+  imageManagerSetId.value = null;
+};
+
+const scrapeMode = ref<'html' | 'url'>('html');
+const scrapeForm = reactive({ pageUrl: '', containerSelector: '', rawHtml: '', baseUrl: '' });
+const scrapeLoading = ref(false);
+const scrapeResult = ref<{ found: number; downloaded: number; skipped: number } | null>(null);
+const scrapeError = ref<string | null>(null);
+
+const scrapeImages = async (setId: string) => {
+  scrapeResult.value = null;
+  scrapeError.value = null;
+  scrapeLoading.value = true;
+  try {
+    const payload = scrapeMode.value === 'html'
+      ? { rawHtml: scrapeForm.rawHtml, baseUrl: scrapeForm.baseUrl || undefined }
+      : { pageUrl: scrapeForm.pageUrl, containerSelector: scrapeForm.containerSelector };
+    const response = await fetch(`/api/sets/${setId}/images/scrape`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      scrapeError.value = data.error || 'Scraping failed';
+      return;
+    }
+    scrapeResult.value = { found: data.found, downloaded: data.downloaded, skipped: data.skipped };
+    if (data.downloaded > 0) {
+      await fetchSetImages(setId);
+    }
+  } catch (error) {
+    scrapeError.value = 'Network error while scraping';
+    console.error('Scrape failed', error);
+  } finally {
+    scrapeLoading.value = false;
+  }
+};
+
+const handleImageSelection = (setId: string, event: Event) => {
+  const target = event.target as HTMLInputElement;
+  imageUploads[setId] = target.files ? Array.from(target.files) : [];
+};
+
+const resetUploadInput = (setId: string) => {
+  uploadInputResetKey[setId] = (uploadInputResetKey[setId] ?? 0) + 1;
+};
+
+const fetchSetImages = async (setId: string) => {
+  try {
+    const response = await fetch(`/api/sets/${setId}/images`);
+    if (!response.ok) {
+      throw new Error('Unable to load set images');
+    }
+    setImages[setId] = await response.json();
+  } catch (error) {
+    console.error('Failed to load images for set', setId, error);
+    setImages[setId] = [];
+  }
+};
+
+const refreshImagesForAllSets = async () => {
+  await Promise.all(sets.value.map((set) => fetchSetImages(set.id)));
+};
+
+const uploadImages = async (setId: string) => {
+  const files = imageUploads[setId];
+  if (!files || files.length === 0) return;
+  imageUploading[setId] = true;
+  try {
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append('images', file);
+    }
+    const response = await fetch(`/api/sets/${setId}/images`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!response.ok) {
+      throw new Error('Upload failed');
+    }
+    imageUploads[setId] = [];
+    resetUploadInput(setId);
+    await fetchSetImages(setId);
+  } catch (error) {
+    console.error('Unable to upload images', error);
+  } finally {
+    imageUploading[setId] = false;
+  }
+};
+
+const deleteImage = async (setId: string, imageId: string) => {
+  imageDeleting[imageId] = true;
+  try {
+    const response = await fetch(`/api/sets/${setId}/images/${imageId}`, {
+      method: 'DELETE'
+    });
+    if (!response.ok) {
+      throw new Error('Unable to delete image');
+    }
+    await fetchSetImages(setId);
+  } catch (error) {
+    console.error('Failed to delete image', error);
+  } finally {
+    imageDeleting[imageId] = false;
+  }
+};
+
+const deletingAllImages = ref(false);
+const deleteAllConfirming = ref(false);
+let deleteAllTimer: ReturnType<typeof setTimeout> | null = null;
+
+const deleteAllImages = async (setId: string) => {
+  if (!deleteAllConfirming.value) {
+    deleteAllConfirming.value = true;
+    deleteAllTimer = setTimeout(() => { deleteAllConfirming.value = false; }, 3000);
+    return;
+  }
+  if (deleteAllTimer) { clearTimeout(deleteAllTimer); deleteAllTimer = null; }
+  deleteAllConfirming.value = false;
+  deletingAllImages.value = true;
+  try {
+    const response = await fetch(`/api/sets/${setId}/images`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('Failed to delete all images');
+    await fetchSetImages(setId);
+  } catch (error) {
+    console.error('Failed to delete all images', error);
+  } finally {
+    deletingAllImages.value = false;
+  }
+};
+
+const deletingSet = ref(false);
+const deleteSetConfirming = ref(false);
+let deleteSetTimer: ReturnType<typeof setTimeout> | null = null;
+
+const deleteSet = async (setId: string) => {
+  if (!deleteSetConfirming.value) {
+    deleteSetConfirming.value = true;
+    deleteSetTimer = setTimeout(() => { deleteSetConfirming.value = false; }, 4000);
+    return;
+  }
+  if (deleteSetTimer) { clearTimeout(deleteSetTimer); deleteSetTimer = null; }
+  deleteSetConfirming.value = false;
+  deletingSet.value = true;
+  try {
+    const response = await fetch(`/api/sets/${setId}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('Failed to delete set');
+    closeFormOverlay();
+    await loadSets();
+  } catch (error) {
+    console.error('Failed to delete set', error);
+  } finally {
+    deletingSet.value = false;
+  }
+};
+
+const moveImage = async (setId: string, fromIndex: number, toIndex: number) => {
+  const images = getImagesForSet(setId);
+  if (toIndex < 0 || toIndex >= images.length) return;
+  const reordered = [...images];
+  const [moved] = reordered.splice(fromIndex, 1);
+  reordered.splice(toIndex, 0, moved);
+  setImages[setId] = reordered;
+  try {
+    const response = await fetch(`/api/sets/${setId}/images/order`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageIds: reordered.map((img) => img.id) })
+    });
+    if (!response.ok) {
+      throw new Error('Unable to reorder images');
+    }
+    setImages[setId] = await response.json();
+  } catch (error) {
+    console.error('Failed to reorder images', error);
+    await fetchSetImages(setId);
+  }
 };
 
 type FormPayload = {
@@ -440,11 +953,13 @@ const parseDecimalString = (value: string) => {
 const openAddForm = () => {
   clearFormFields();
   isFormOverlayVisible.value = true;
+  nextTick(() => formOverlayRef.value?.focus());
 };
 
 const closeFormOverlay = () => {
   clearFormFields();
   isFormOverlayVisible.value = false;
+  deleteSetConfirming.value = false;
 };
 
 const formatWithComma = (value: number, digits: number) => {
@@ -546,6 +1061,7 @@ const loadSets = async () => {
       throw new Error('Unable to load sets');
     }
     sets.value = await response.json();
+    await refreshImagesForAllSets();
   } catch (error) {
     console.error(error);
   }
@@ -565,6 +1081,7 @@ const startEditing = (set: BrickSet) => {
     pieceCount: set.pieceCount != null ? String(set.pieceCount) : ''
   };
   isFormOverlayVisible.value = true;
+  nextTick(() => formOverlayRef.value?.focus());
 };
 
 const saveSet = async () => {
@@ -665,6 +1182,35 @@ onMounted(() => {
   font-size: 0.9rem;
   margin-top: 0.5rem;
   cursor: pointer;
+}
+
+.delete-set-button {
+  width: 100%;
+  padding: 0.6rem;
+  margin-top: 1.5rem;
+  border: 1px solid #fecaca;
+  border-radius: 0.9rem;
+  background: #fff;
+  color: #dc2626;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.delete-set-button:hover {
+  background: #fef2f2;
+}
+
+.delete-set-button.confirming {
+  background: #dc2626;
+  color: #fff;
+  border-color: #dc2626;
+  font-weight: 600;
+}
+
+.delete-set-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 .link-button {
@@ -880,6 +1426,12 @@ onMounted(() => {
   width: 300px;
 }
 
+.set-card__image-wrapper {
+  position: relative;
+  width: 100%;
+  height: 250px;
+}
+
 .set-card__image {
   width: 100%;
   height: 100%;
@@ -888,12 +1440,6 @@ onMounted(() => {
   object-fit: contain;
   cursor: pointer;
   padding: 3px;
-}
-
-.set-card__image-wrapper {
-  position: relative;
-  width: 100%;
-  height: 250px;
 }
 
 .set-card__image-controls {
@@ -905,8 +1451,9 @@ onMounted(() => {
   padding: 0.5rem;
   opacity: 0;
   transition: opacity 0.2s ease;
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.25), rgba(15, 23, 42, 0.01));
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.05), rgba(15, 23, 42, 0.01));
   pointer-events: none;
+  border-radius: 0.75rem;
 }
 
 .set-card__image-wrapper:hover .set-card__image-controls {
@@ -915,6 +1462,339 @@ onMounted(() => {
 
 .set-card__image-controls button {
   pointer-events: auto;
+}
+
+
+.set-card__image-empty {
+  position: relative;
+  width: 100%;
+  height: 250px;
+  border-radius: 0.75rem;
+  background: #f1f5f9;
+  border: 1px dashed rgba(15, 23, 42, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.manage-images-gear {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+  font-size: 1.05rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 2;
+}
+
+.set-card__image-wrapper:hover .manage-images-gear {
+  opacity: 1;
+}
+
+.set-card__image-empty .manage-images-gear {
+  position: absolute;
+  opacity: 0.6;
+}
+
+.set-card__image-empty:hover .manage-images-gear {
+  opacity: 1;
+}
+
+.manage-images-gear:hover {
+  transform: rotate(45deg);
+  background: #fff;
+}
+
+.image-gallery-empty {
+  font-size: 0.85rem;
+  color: #64748b;
+  text-align: center;
+  padding: 1rem 0;
+}
+
+.image-upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.image-upload-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.9rem;
+  border-radius: 0.75rem;
+  border: 1px dashed rgba(15, 23, 42, 0.3);
+  font-size: 0.85rem;
+  background: #f8fafc;
+  cursor: pointer;
+}
+
+.image-upload-input input[type='file'] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.image-upload-form .primary-button {
+  font-size: 0.85rem;
+  padding: 0.5rem;
+}
+
+.image-manager-card {
+  width: min(520px, 100%);
+}
+
+.image-manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.image-manager-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.image-manager-item img {
+  width: 80px;
+  height: 60px;
+  object-fit: contain;
+  border-radius: 0.5rem;
+  flex-shrink: 0;
+}
+
+.image-manager-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.image-manager-item-date {
+  font-size: 0.8rem;
+  color: #334155;
+}
+
+.image-manager-item-source {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+}
+
+.image-manager-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.image-manager-sort-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.image-sort-button {
+  width: 1.6rem;
+  height: 1.4rem;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  border-radius: 0.3rem;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.55rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  transition: background 0.15s ease;
+}
+
+.image-sort-button:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.image-sort-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.image-manager-delete {
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+  background: #fee2e2;
+  color: #dc2626;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+
+.image-manager-delete:hover {
+  background: #fecaca;
+}
+
+.image-manager-delete:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.delete-all-button {
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 0.5rem;
+  border: 1px solid #fecaca;
+  border-radius: 0.6rem;
+  background: #fff;
+  color: #dc2626;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.delete-all-button:hover {
+  background: #fef2f2;
+}
+
+.delete-all-button.confirming {
+  background: #dc2626;
+  color: #fff;
+  border-color: #dc2626;
+  font-weight: 600;
+}
+
+.delete-all-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.scrape-section {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 0.75rem;
+  padding: 0;
+  margin-bottom: 0.5rem;
+}
+
+.scrape-toggle {
+  padding: 0.6rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  user-select: none;
+}
+
+.scrape-section[open] .scrape-toggle {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  margin-bottom: 0.5rem;
+}
+
+.scrape-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0 0.9rem 0.9rem;
+}
+
+.scrape-mode-tabs {
+  display: flex;
+  gap: 0.3rem;
+  margin-bottom: 0.2rem;
+}
+
+.scrape-mode-tab {
+  flex: 1;
+  padding: 0.4rem;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  border-radius: 0.5rem;
+  background: #fff;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: #64748b;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.scrape-mode-tab.active {
+  background: #ffd502;
+  color: #000;
+  border-color: #ffd502;
+  font-weight: 600;
+}
+
+.scrape-form label {
+  font-size: 0.8rem;
+  color: #475569;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.label-hint {
+  font-weight: 400;
+  color: #94a3b8;
+}
+
+.scrape-form input,
+.scrape-form textarea {
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.6rem;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  font-size: 0.85rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.scrape-form textarea {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.scrape-form .primary-button {
+  font-size: 0.85rem;
+  padding: 0.5rem;
+}
+
+.scrape-result {
+  font-size: 0.8rem;
+  color: #16a34a;
+  padding: 0.4rem 0.6rem;
+  background: #f0fdf4;
+  border-radius: 0.5rem;
+}
+
+.scrape-error {
+  font-size: 0.8rem;
+  color: #dc2626;
+  padding: 0.4rem 0.6rem;
+  background: #fef2f2;
+  border-radius: 0.5rem;
 }
 
 .carousel-button {
@@ -942,7 +1822,6 @@ onMounted(() => {
 .set-card__details {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
   margin-left: 1rem;
 }
 
@@ -1130,6 +2009,22 @@ onMounted(() => {
   border-radius: 1rem;
   max-height: 85vh;
   object-fit: contain;
+  cursor: zoom-in;
+  transition: max-height 0.2s ease;
+}
+
+.zoomed {
+  overflow: hidden;
+}
+
+.zoomed .image-viewer-img {
+  cursor: grab;
+  transition: none;
+  user-select: none;
+}
+
+.zoomed .image-viewer-img.dragging {
+  cursor: grabbing;
 }
 
 .image-viewer-close {
@@ -1137,5 +2032,18 @@ onMounted(() => {
   top: 5px;
   right: 5px;
   background: rgba(255, 255, 255, 0.9);
+}
+
+.image-viewer-counter {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.8rem;
+  color: #475569;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  letter-spacing: 0.05em;
 }
 </style>
