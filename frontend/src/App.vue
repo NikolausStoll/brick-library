@@ -170,6 +170,9 @@
     role="dialog"
     aria-modal="true"
     @click.self="closeFormOverlay"
+    @keydown.esc="closeFormOverlay"
+    tabindex="-1"
+    ref="formOverlayRef"
   >
     <form class="card form-card overlay-card" @submit.prevent="saveSet">
       <div class="overlay-header">
@@ -244,10 +247,12 @@
       <button
         v-if="isEditing"
         type="button"
-        class="text-button"
-        @click="closeFormOverlay"
+        class="delete-set-button"
+        :class="{ confirming: deleteSetConfirming }"
+        :disabled="deletingSet"
+        @click="deleteSet(editingId!)"
       >
-        Cancel
+        {{ deletingSet ? 'Deleting…' : deleteSetConfirming ? 'Are you sure?' : 'Delete set' }}
       </button>
     </form>
   </div>
@@ -257,7 +262,7 @@
     role="presentation"
     @click.self="closeImageViewer"
   >
-    <div class="image-viewer-content">
+    <div class="image-viewer-content" :class="{ zoomed: imageViewerZoomed }">
       <button
         type="button"
         class="icon-button image-viewer-close"
@@ -279,6 +284,12 @@
         :src="imageViewerUrl"
         alt="Fullscreen set preview"
         class="image-viewer-img"
+        :class="{ dragging: zoomDragging }"
+        :style="imageViewerZoomed ? zoomedImageStyle : undefined"
+        @mousedown.prevent.stop="onZoomMouseDown"
+        @mousemove.prevent="onZoomMouseMove"
+        @mouseup.prevent.stop="onZoomMouseUp"
+        @mouseleave="onZoomMouseLeave"
       />
       <button
         type="button"
@@ -338,6 +349,83 @@
         </button>
       </form>
 
+      <details class="scrape-section">
+        <summary class="scrape-toggle">Scrape images</summary>
+        <form class="scrape-form" @submit.prevent="scrapeImages(imageManagerSetId!)">
+          <div class="scrape-mode-tabs">
+            <button
+              type="button"
+              class="scrape-mode-tab"
+              :class="{ active: scrapeMode === 'html' }"
+              @click="scrapeMode = 'html'"
+            >
+              Paste HTML
+            </button>
+            <button
+              type="button"
+              class="scrape-mode-tab"
+              :class="{ active: scrapeMode === 'url' }"
+              @click="scrapeMode = 'url'"
+            >
+              Fetch URL
+            </button>
+          </div>
+
+          <template v-if="scrapeMode === 'html'">
+            <label>
+              HTML containing &lt;img&gt; tags
+              <textarea
+                v-model="scrapeForm.rawHtml"
+                rows="5"
+                placeholder='<div class="gallery">&#10;  <img src="https://..." />&#10;  <img src="https://..." />&#10;</div>'
+                required
+              ></textarea>
+            </label>
+            <label>
+              Base URL <span class="label-hint">(optional, for relative src)</span>
+              <input
+                v-model="scrapeForm.baseUrl"
+                type="url"
+                placeholder="https://example.com"
+              />
+            </label>
+          </template>
+
+          <template v-else>
+            <label>
+              Page URL
+              <input
+                v-model="scrapeForm.pageUrl"
+                type="url"
+                placeholder="https://example.com/product-page"
+                required
+              />
+            </label>
+            <label>
+              Container CSS selector
+              <input
+                v-model="scrapeForm.containerSelector"
+                type="text"
+                placeholder=".gallery-container"
+                required
+              />
+            </label>
+          </template>
+
+          <button
+            type="submit"
+            class="primary-button"
+            :disabled="scrapeLoading"
+          >
+            {{ scrapeLoading ? 'Scraping…' : 'Scrape' }}
+          </button>
+          <div v-if="scrapeResult" class="scrape-result">
+            Found {{ scrapeResult.found }}, downloaded {{ scrapeResult.downloaded }}, skipped {{ scrapeResult.skipped }}
+          </div>
+          <div v-if="scrapeError" class="scrape-error">{{ scrapeError }}</div>
+        </form>
+      </details>
+
       <div v-if="getImagesForSet(imageManagerSetId!).length" class="image-manager-list">
         <div
           v-for="(image, index) in getImagesForSet(imageManagerSetId!)"
@@ -380,6 +468,15 @@
             </button>
           </div>
         </div>
+        <button
+          type="button"
+          class="delete-all-button"
+          :class="{ confirming: deleteAllConfirming }"
+          :disabled="deletingAllImages"
+          @click="deleteAllImages(imageManagerSetId!)"
+        >
+          {{ deletingAllImages ? 'Deleting…' : deleteAllConfirming ? 'Are you sure?' : 'Delete all images' }}
+        </button>
       </div>
       <p v-else class="image-gallery-empty">No images uploaded yet.</p>
     </div>
@@ -388,7 +485,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 
 type SetStatus = 'New' | 'Building' | 'Built' | 'Disassembled' | 'Sold';
 
@@ -436,6 +533,7 @@ const sortOptions: Array<{ key: SortField; label: string }> = [
 const sets = ref<BrickSet[]>([]);
 const submitting = ref(false);
 const isFormOverlayVisible = ref(false);
+const formOverlayRef = ref<HTMLElement | null>(null);
 
 type SetImage = {
   id: string;
@@ -457,6 +555,10 @@ const setImageIndexes = reactive<Record<string, number>>({});
 
 const imageViewerSetId = ref<string | null>(null);
 const imageViewerIndex = ref(0);
+const imageViewerZoomed = ref(false);
+const zoomOrigin = reactive({ x: 50, y: 50 });
+const zoomPan = reactive({ x: 0, y: 0 });
+const zoomDragStart = reactive({ mouseX: 0, mouseY: 0, panX: 0, panY: 0 });
 const imageManagerSetId = ref<string | null>(null);
 
 const getImagesForSet = (setId: string) => setImages[setId] ?? [];
@@ -499,7 +601,95 @@ const openImageViewer = (setId: string) => {
 };
 const closeImageViewer = () => {
   imageViewerSetId.value = null;
+  imageViewerZoomed.value = false;
+  resetZoomState();
 };
+
+const handleViewerKeydown = (event: KeyboardEvent) => {
+  if (imageViewerSetId.value === null) return;
+  if (event.key === 'Escape') {
+    closeImageViewer();
+  } else if (event.key === 'ArrowRight') {
+    showNextViewerImage();
+  } else if (event.key === 'ArrowLeft') {
+    showPreviousViewerImage();
+  }
+};
+
+watch(imageViewerSetId, (newVal, oldVal) => {
+  if (newVal !== null && oldVal === null) {
+    window.addEventListener('keydown', handleViewerKeydown);
+  } else if (newVal === null && oldVal !== null) {
+    window.removeEventListener('keydown', handleViewerKeydown);
+  }
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleViewerKeydown);
+});
+
+const ZOOM_SCALE = 2.5;
+const zoomDragging = ref(false);
+const zoomDidDrag = ref(false);
+
+const resetZoomState = () => {
+  zoomOrigin.x = 50;
+  zoomOrigin.y = 50;
+  zoomPan.x = 0;
+  zoomPan.y = 0;
+  zoomDragging.value = false;
+  zoomDidDrag.value = false;
+};
+
+const onZoomMouseDown = (event: MouseEvent) => {
+  if (!imageViewerZoomed.value) {
+    const img = event.currentTarget as HTMLElement;
+    const rect = img.getBoundingClientRect();
+    zoomOrigin.x = ((event.clientX - rect.left) / rect.width) * 100;
+    zoomOrigin.y = ((event.clientY - rect.top) / rect.height) * 100;
+    zoomPan.x = 0;
+    zoomPan.y = 0;
+    imageViewerZoomed.value = true;
+    return;
+  }
+  zoomDragging.value = true;
+  zoomDidDrag.value = false;
+  zoomDragStart.mouseX = event.clientX;
+  zoomDragStart.mouseY = event.clientY;
+  zoomDragStart.panX = zoomPan.x;
+  zoomDragStart.panY = zoomPan.y;
+};
+
+const onZoomMouseMove = (event: MouseEvent) => {
+  if (!zoomDragging.value) return;
+  const dx = event.clientX - zoomDragStart.mouseX;
+  const dy = event.clientY - zoomDragStart.mouseY;
+  if (!zoomDidDrag.value && Math.abs(dx) + Math.abs(dy) > 4) {
+    zoomDidDrag.value = true;
+  }
+  zoomPan.x = zoomDragStart.panX + dx / ZOOM_SCALE;
+  zoomPan.y = zoomDragStart.panY + dy / ZOOM_SCALE;
+};
+
+const onZoomMouseUp = () => {
+  if (zoomDragging.value && !zoomDidDrag.value) {
+    imageViewerZoomed.value = false;
+    resetZoomState();
+  }
+  zoomDragging.value = false;
+  zoomDidDrag.value = false;
+};
+
+const onZoomMouseLeave = () => {
+  zoomDragging.value = false;
+  zoomDidDrag.value = false;
+};
+
+const zoomedImageStyle = computed(() => ({
+  transformOrigin: `${zoomOrigin.x}% ${zoomOrigin.y}%`,
+  transform: `scale(${ZOOM_SCALE}) translate(${zoomPan.x}px, ${zoomPan.y}px)`
+}));
+
 const imageViewerUrl = computed(() => {
   const setId = imageViewerSetId.value;
   if (setId === null) return undefined;
@@ -512,6 +702,7 @@ const showNextViewerImage = () => {
   if (setId === null) return;
   const images = getImagesForSet(setId);
   if (images.length < 2) return;
+  imageViewerZoomed.value = false;
   imageViewerIndex.value = (imageViewerIndex.value + 1) % images.length;
 };
 const showPreviousViewerImage = () => {
@@ -519,14 +710,53 @@ const showPreviousViewerImage = () => {
   if (setId === null) return;
   const images = getImagesForSet(setId);
   if (images.length < 2) return;
+  imageViewerZoomed.value = false;
   imageViewerIndex.value = (imageViewerIndex.value - 1 + images.length) % images.length;
 };
 
 const openImageManager = (setId: string) => {
   imageManagerSetId.value = setId;
+  scrapeResult.value = null;
+  scrapeError.value = null;
 };
 const closeImageManager = () => {
   imageManagerSetId.value = null;
+};
+
+const scrapeMode = ref<'html' | 'url'>('html');
+const scrapeForm = reactive({ pageUrl: '', containerSelector: '', rawHtml: '', baseUrl: '' });
+const scrapeLoading = ref(false);
+const scrapeResult = ref<{ found: number; downloaded: number; skipped: number } | null>(null);
+const scrapeError = ref<string | null>(null);
+
+const scrapeImages = async (setId: string) => {
+  scrapeResult.value = null;
+  scrapeError.value = null;
+  scrapeLoading.value = true;
+  try {
+    const payload = scrapeMode.value === 'html'
+      ? { rawHtml: scrapeForm.rawHtml, baseUrl: scrapeForm.baseUrl || undefined }
+      : { pageUrl: scrapeForm.pageUrl, containerSelector: scrapeForm.containerSelector };
+    const response = await fetch(`/api/sets/${setId}/images/scrape`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      scrapeError.value = data.error || 'Scraping failed';
+      return;
+    }
+    scrapeResult.value = { found: data.found, downloaded: data.downloaded, skipped: data.skipped };
+    if (data.downloaded > 0) {
+      await fetchSetImages(setId);
+    }
+  } catch (error) {
+    scrapeError.value = 'Network error while scraping';
+    console.error('Scrape failed', error);
+  } finally {
+    scrapeLoading.value = false;
+  }
 };
 
 const handleImageSelection = (setId: string, event: Event) => {
@@ -595,6 +825,55 @@ const deleteImage = async (setId: string, imageId: string) => {
     console.error('Failed to delete image', error);
   } finally {
     imageDeleting[imageId] = false;
+  }
+};
+
+const deletingAllImages = ref(false);
+const deleteAllConfirming = ref(false);
+let deleteAllTimer: ReturnType<typeof setTimeout> | null = null;
+
+const deleteAllImages = async (setId: string) => {
+  if (!deleteAllConfirming.value) {
+    deleteAllConfirming.value = true;
+    deleteAllTimer = setTimeout(() => { deleteAllConfirming.value = false; }, 3000);
+    return;
+  }
+  if (deleteAllTimer) { clearTimeout(deleteAllTimer); deleteAllTimer = null; }
+  deleteAllConfirming.value = false;
+  deletingAllImages.value = true;
+  try {
+    const response = await fetch(`/api/sets/${setId}/images`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('Failed to delete all images');
+    await fetchSetImages(setId);
+  } catch (error) {
+    console.error('Failed to delete all images', error);
+  } finally {
+    deletingAllImages.value = false;
+  }
+};
+
+const deletingSet = ref(false);
+const deleteSetConfirming = ref(false);
+let deleteSetTimer: ReturnType<typeof setTimeout> | null = null;
+
+const deleteSet = async (setId: string) => {
+  if (!deleteSetConfirming.value) {
+    deleteSetConfirming.value = true;
+    deleteSetTimer = setTimeout(() => { deleteSetConfirming.value = false; }, 4000);
+    return;
+  }
+  if (deleteSetTimer) { clearTimeout(deleteSetTimer); deleteSetTimer = null; }
+  deleteSetConfirming.value = false;
+  deletingSet.value = true;
+  try {
+    const response = await fetch(`/api/sets/${setId}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('Failed to delete set');
+    closeFormOverlay();
+    await loadSets();
+  } catch (error) {
+    console.error('Failed to delete set', error);
+  } finally {
+    deletingSet.value = false;
   }
 };
 
@@ -674,11 +953,13 @@ const parseDecimalString = (value: string) => {
 const openAddForm = () => {
   clearFormFields();
   isFormOverlayVisible.value = true;
+  nextTick(() => formOverlayRef.value?.focus());
 };
 
 const closeFormOverlay = () => {
   clearFormFields();
   isFormOverlayVisible.value = false;
+  deleteSetConfirming.value = false;
 };
 
 const formatWithComma = (value: number, digits: number) => {
@@ -800,6 +1081,7 @@ const startEditing = (set: BrickSet) => {
     pieceCount: set.pieceCount != null ? String(set.pieceCount) : ''
   };
   isFormOverlayVisible.value = true;
+  nextTick(() => formOverlayRef.value?.focus());
 };
 
 const saveSet = async () => {
@@ -900,6 +1182,35 @@ onMounted(() => {
   font-size: 0.9rem;
   margin-top: 0.5rem;
   cursor: pointer;
+}
+
+.delete-set-button {
+  width: 100%;
+  padding: 0.6rem;
+  margin-top: 1.5rem;
+  border: 1px solid #fecaca;
+  border-radius: 0.9rem;
+  background: #fff;
+  color: #dc2626;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.delete-set-button:hover {
+  background: #fef2f2;
+}
+
+.delete-set-button.confirming {
+  background: #dc2626;
+  color: #fff;
+  border-color: #dc2626;
+  font-weight: 600;
+}
+
+.delete-set-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 .link-button {
@@ -1270,7 +1581,7 @@ onMounted(() => {
 .image-manager-item img {
   width: 80px;
   height: 60px;
-  object-fit: cover;
+  object-fit: contain;
   border-radius: 0.5rem;
   flex-shrink: 0;
 }
@@ -1354,6 +1665,138 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
+.delete-all-button {
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 0.5rem;
+  border: 1px solid #fecaca;
+  border-radius: 0.6rem;
+  background: #fff;
+  color: #dc2626;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.delete-all-button:hover {
+  background: #fef2f2;
+}
+
+.delete-all-button.confirming {
+  background: #dc2626;
+  color: #fff;
+  border-color: #dc2626;
+  font-weight: 600;
+}
+
+.delete-all-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.scrape-section {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 0.75rem;
+  padding: 0;
+  margin-bottom: 0.5rem;
+}
+
+.scrape-toggle {
+  padding: 0.6rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  user-select: none;
+}
+
+.scrape-section[open] .scrape-toggle {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  margin-bottom: 0.5rem;
+}
+
+.scrape-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0 0.9rem 0.9rem;
+}
+
+.scrape-mode-tabs {
+  display: flex;
+  gap: 0.3rem;
+  margin-bottom: 0.2rem;
+}
+
+.scrape-mode-tab {
+  flex: 1;
+  padding: 0.4rem;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  border-radius: 0.5rem;
+  background: #fff;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: #64748b;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.scrape-mode-tab.active {
+  background: #ffd502;
+  color: #000;
+  border-color: #ffd502;
+  font-weight: 600;
+}
+
+.scrape-form label {
+  font-size: 0.8rem;
+  color: #475569;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.label-hint {
+  font-weight: 400;
+  color: #94a3b8;
+}
+
+.scrape-form input,
+.scrape-form textarea {
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.6rem;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  font-size: 0.85rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.scrape-form textarea {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.scrape-form .primary-button {
+  font-size: 0.85rem;
+  padding: 0.5rem;
+}
+
+.scrape-result {
+  font-size: 0.8rem;
+  color: #16a34a;
+  padding: 0.4rem 0.6rem;
+  background: #f0fdf4;
+  border-radius: 0.5rem;
+}
+
+.scrape-error {
+  font-size: 0.8rem;
+  color: #dc2626;
+  padding: 0.4rem 0.6rem;
+  background: #fef2f2;
+  border-radius: 0.5rem;
+}
+
 .carousel-button {
   width: 2.5rem;
   height: 2.5rem;
@@ -1379,7 +1822,6 @@ onMounted(() => {
 .set-card__details {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
   margin-left: 1rem;
 }
 
@@ -1567,6 +2009,22 @@ onMounted(() => {
   border-radius: 1rem;
   max-height: 85vh;
   object-fit: contain;
+  cursor: zoom-in;
+  transition: max-height 0.2s ease;
+}
+
+.zoomed {
+  overflow: hidden;
+}
+
+.zoomed .image-viewer-img {
+  cursor: grab;
+  transition: none;
+  user-select: none;
+}
+
+.zoomed .image-viewer-img.dragging {
+  cursor: grabbing;
 }
 
 .image-viewer-close {

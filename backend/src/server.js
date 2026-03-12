@@ -6,6 +6,8 @@ import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
+import sharp from 'sharp';
+import * as cheerio from 'cheerio';
 
 dotenv.config({
   path: fileURLToPath(new URL('../../.env', import.meta.url))
@@ -23,6 +25,19 @@ try {
   console.error(`Failed to create upload directory ${UPLOAD_DIR}`, error);
   process.exit(1);
 }
+
+const IMAGE_QUALITY = Number(process.env.IMAGE_QUALITY || 75);
+
+const optimizeImage = async (inputBuffer) => {
+  const image = sharp(inputBuffer);
+  const metadata = await image.metadata();
+
+  if (metadata.format === 'svg') return { buffer: inputBuffer, ext: '.svg' };
+  if (metadata.format === 'gif') {
+    return { buffer: await image.gif().toBuffer(), ext: '.gif' };
+  }
+  return { buffer: await image.webp({ quality: IMAGE_QUALITY }).toBuffer(), ext: '.webp' };
+};
 
 const db = new Database(DB_PATH);
 
@@ -349,6 +364,9 @@ const updateImageSortOrderStmt = db.prepare(
   'UPDATE set_images SET sortOrder = @sortOrder WHERE id = @id'
 );
 const selectImageByIdStmt = db.prepare('SELECT * FROM set_images WHERE id = ?');
+const selectImageByOriginalUrlStmt = db.prepare(
+  'SELECT id FROM set_images WHERE setId = ? AND originalUrl = ?'
+);
 const deleteImageStmt = db.prepare('DELETE FROM set_images WHERE id = ?');
 const insertSetStmt = db.prepare(INSERT_SET_SQL);
 const selectAllStmt = db.prepare('SELECT * FROM sets ORDER BY createdAt DESC');
@@ -401,10 +419,18 @@ app.put('/api/sets/:id', (req, res) => {
 });
 
 app.delete('/api/sets/:id', (req, res) => {
-  const { changes } = deleteStmt.run(req.params.id);
+  const setId = Number(req.params.id);
+  const { changes } = deleteStmt.run(setId);
   if (changes === 0) {
     return res.status(404).json({ error: 'Set not found' });
   }
+  const images = selectImagesBySetIdStmt.all(setId);
+  for (const image of images) {
+    try { fs.unlinkSync(getImagePath(setId, image.fileName)); } catch { /* file may be gone */ }
+    deleteImageStmt.run(image.id);
+  }
+  const setDir = path.join(UPLOAD_DIR, String(setId));
+  try { fs.rmdirSync(setDir); } catch { /* dir may be gone or not empty */ }
   res.status(204).send();
 });
 
@@ -412,7 +438,7 @@ app.post(
   '/api/sets/:setId/images',
   ensureSetExists,
   upload.array('images', 20),
-  (req, res) => {
+  async (req, res) => {
     const files = req.files;
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'at least one image file is required' });
@@ -420,28 +446,24 @@ app.post(
     const setId = Number(req.params.setId);
     const { maxOrder } = selectMaxSortOrderStmt.get(setId);
     const now = new Date().toISOString();
-    const created = files.map((file, index) => {
-      const id = randomUUID();
-      const sortOrder = maxOrder + 1 + index;
-      insertImageStmt.run({
-        id,
-        setId,
-        fileName: file.filename,
-        source: 'upload',
-        originalUrl: null,
-        sortOrder,
-        createdAt: now
-      });
-      return serializeImageRow({
-        id,
-        setId,
-        fileName: file.filename,
-        source: 'upload',
-        originalUrl: null,
-        sortOrder,
-        createdAt: now
-      });
-    });
+    const created = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      try {
+        const inputBuffer = fs.readFileSync(file.path);
+        const { buffer, ext } = await optimizeImage(inputBuffer);
+        const id = randomUUID();
+        const fileName = `${id}${ext}`;
+        const optimizedPath = path.join(path.dirname(file.path), fileName);
+        fs.writeFileSync(optimizedPath, buffer);
+        if (optimizedPath !== file.path) fs.unlinkSync(file.path);
+        const sortOrder = maxOrder + 1 + i;
+        insertImageStmt.run({ id, setId, fileName, source: 'upload', originalUrl: null, sortOrder, createdAt: now });
+        created.push(serializeImageRow({ id, setId, fileName, source: 'upload', originalUrl: null, sortOrder, createdAt: now }));
+      } catch (error) {
+        console.error('Failed to optimize uploaded image', error);
+      }
+    }
     res.status(201).json(created);
   }
 );
@@ -490,6 +512,18 @@ app.delete('/api/sets/:setId/images/:imageId', ensureSetExists, (req, res) => {
   res.status(204).send();
 });
 
+app.delete('/api/sets/:setId/images', ensureSetExists, (req, res) => {
+  const setId = Number(req.params.setId);
+  const images = selectImagesBySetIdStmt.all(setId);
+  const setDir = path.join(UPLOAD_DIR, String(setId));
+  for (const image of images) {
+    const filePath = path.join(setDir, image.fileName);
+    try { fs.unlinkSync(filePath); } catch { /* file may already be gone */ }
+    deleteImageStmt.run(image.id);
+  }
+  res.status(204).send();
+});
+
 app.put('/api/sets/:setId/images/order', ensureSetExists, (req, res) => {
   const imageIds = req.body.imageIds;
   if (!Array.isArray(imageIds)) {
@@ -510,6 +544,133 @@ app.put('/api/sets/:setId/images/order', ensureSetExists, (req, res) => {
   updateMany(imageIds);
   const rows = selectImagesBySetIdStmt.all(setId);
   res.json(rows.map(serializeImageRow));
+});
+
+app.post('/api/sets/:setId/images/scrape', ensureSetExists, async (req, res) => {
+  const { pageUrl, containerSelector, rawHtml, baseUrl } = req.body;
+
+  const normalizedSelector = containerSelector && !/^[.#\[\*>~+:,]/.test(containerSelector.trim())
+    ? `.${containerSelector.trim()}`
+    : containerSelector?.trim();
+  const hasUrlMode = pageUrl && normalizedSelector;
+  const hasHtmlMode = rawHtml;
+  if (!hasUrlMode && !hasHtmlMode) {
+    return res.status(400).json({ error: 'Provide either pageUrl + containerSelector, or rawHtml' });
+  }
+
+  let parsedBaseUrl = null;
+  const baseUrlSource = baseUrl || pageUrl;
+  if (baseUrlSource) {
+    try {
+      parsedBaseUrl = new URL(baseUrlSource);
+    } catch {
+      return res.status(400).json({ error: 'baseUrl / pageUrl is not a valid URL' });
+    }
+  }
+
+  let imgSrcs = [];
+
+  if (hasHtmlMode) {
+    const $ = cheerio.load(rawHtml);
+    $('img').each((_, el) => {
+      const src = $(el).attr('src');
+      if (src) imgSrcs.push(src);
+    });
+  } else {
+    let html;
+    try {
+      const response = await fetch(pageUrl, {
+        headers: { 'User-Agent': 'BrickLibrary/1.0' }
+      });
+      if (!response.ok) {
+        return res.status(502).json({ error: `Failed to fetch page: HTTP ${response.status}` });
+      }
+      html = await response.text();
+    } catch (error) {
+      return res.status(502).json({ error: `Failed to fetch page: ${error.message}` });
+    }
+
+    const $ = cheerio.load(html);
+    const container = $(normalizedSelector);
+    if (container.length === 0) {
+      return res.status(400).json({ error: `Selector "${normalizedSelector}" matched no elements` });
+    }
+    container.find('img').each((_, el) => {
+      const src = $(el).attr('src');
+      if (src) imgSrcs.push(src);
+    });
+  }
+
+  if (imgSrcs.length === 0) {
+    return res.json({ found: 0, downloaded: 0, skipped: 0, images: [] });
+  }
+
+  const resolvedUrls = imgSrcs.map((src) => {
+    try {
+      const parsed = new URL(src, parsedBaseUrl ?? undefined);
+      parsed.search = '';
+      return parsed.href;
+    } catch {
+      return null;
+    }
+  }).filter(Boolean);
+
+  const setId = Number(req.params.setId);
+  const setDir = path.join(UPLOAD_DIR, String(setId));
+  fs.mkdirSync(setDir, { recursive: true });
+
+  const { maxOrder } = selectMaxSortOrderStmt.get(setId);
+  let nextOrder = maxOrder + 1;
+  const now = new Date().toISOString();
+  const created = [];
+  let skipped = 0;
+
+  for (const imageUrl of resolvedUrls) {
+    const existing = selectImageByOriginalUrlStmt.get(setId, imageUrl);
+    if (existing) {
+      skipped++;
+      continue;
+    }
+
+    let rawBuffer;
+    try {
+      const imgResponse = await fetch(imageUrl, {
+        headers: { 'User-Agent': 'BrickLibrary/1.0' }
+      });
+      if (!imgResponse.ok) {
+        skipped++;
+        continue;
+      }
+      rawBuffer = Buffer.from(await imgResponse.arrayBuffer());
+    } catch {
+      skipped++;
+      continue;
+    }
+
+    let optimized;
+    try {
+      optimized = await optimizeImage(rawBuffer);
+    } catch {
+      skipped++;
+      continue;
+    }
+
+    const id = randomUUID();
+    const fileName = `${id}${optimized.ext}`;
+    const filePath = path.join(setDir, fileName);
+    fs.writeFileSync(filePath, optimized.buffer);
+
+    const sortOrder = nextOrder++;
+    insertImageStmt.run({ id, setId, fileName, source: 'scrape', originalUrl: imageUrl, sortOrder, createdAt: now });
+    created.push(serializeImageRow({ id, setId, fileName, source: 'scrape', originalUrl: imageUrl, sortOrder, createdAt: now }));
+  }
+
+  res.status(201).json({
+    found: resolvedUrls.length,
+    downloaded: created.length,
+    skipped,
+    images: created
+  });
 });
 
 const STATIC_DIR = process.env.STATIC_DIR || path.join(__dirname, '../../public');

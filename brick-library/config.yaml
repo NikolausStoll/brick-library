@@ -1,7 +1,7 @@
 name: "Brick Library"
 slug: "brick-library"
 description: "Personal brick set tracker frontend and backend"
-version: "0.1.0"
+version: "0.2.0"
 url: "https://github.com/NikolausStoll/brick-library"
 
 arch:
@@ -27,9 +27,11 @@ options:
   db_path: "/data/brick-library.db"
   static_dir: "/app/public"
   upload_dir: "/data/uploads"
+  image_quality: 80
 
 schema:
   port: int(1024,65535)
   db_path: str
   static_dir: str
   upload_dir: str
+  image_quality: int
