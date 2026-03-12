@@ -82,49 +82,52 @@
         >
           <div class="set-card__layout">
             <div class="set-card__image-panel" @click.stop>
-              <div v-if="getImagesForSet(set.id).length" class="image-gallery-grid">
-                <figure
-                  v-for="image in getImagesForSet(set.id)"
-                  :key="image.id"
-                  class="image-gallery-item"
-                >
-                  <img
-                    :src="image.url"
-                    :alt="`Image thumbnail for ${set.setName}`"
-                    loading="lazy"
-                  />
+              <div v-if="getImagesForSet(set.id).length" class="set-card__image-wrapper">
+                <img
+                  :src="getCurrentImage(set.id)?.url"
+                  :alt="`Image preview for ${set.setName}`"
+                  class="set-card__image"
+                  loading="lazy"
+                  @click="openImageViewer(set.id)"
+                />
+                <div class="set-card__image-controls" v-if="getImagesForSet(set.id).length > 1">
                   <button
                     type="button"
-                    class="image-gallery-delete"
-                    :disabled="imageDeleting[image.id]"
-                    @click.stop="deleteImage(set.id, image.id)"
+                    class="carousel-button"
+                    @click.stop="showPreviousImage(set.id)"
+                    aria-label="Show previous image"
                   >
-                    {{ imageDeleting[image.id] ? 'Removing…' : 'Delete' }}
+                    &#8249;
                   </button>
-                  <figcaption>{{ formatImageDate(image.createdAt) }}</figcaption>
-                </figure>
-              </div>
-              <p v-else class="image-gallery-empty">
-                No images yet. Upload one to show this set.
-              </p>
-              <form class="image-upload-form" @submit.prevent="uploadImage(set.id)">
-                <label class="image-upload-input">
-                  <span>{{ getSelectedFileName(set.id) }}</span>
-                  <input
-                    :key="uploadInputResetKey[set.id] ?? 0"
-                    type="file"
-                    accept="image/*"
-                    @change="handleImageSelection(set.id, $event)"
-                  />
-                </label>
+                  <button
+                    type="button"
+                    class="carousel-button"
+                    @click.stop="showNextImage(set.id)"
+                    aria-label="Show next image"
+                  >
+                    &#8250;
+                  </button>
+                </div>
                 <button
-                  type="submit"
-                  class="primary-button"
-                  :disabled="!imageUploads[set.id] || imageUploading[set.id]"
+                  type="button"
+                  class="manage-images-gear"
+                  aria-label="Manage images"
+                  @click.stop="openImageManager(set.id)"
                 >
-                  {{ imageUploading[set.id] ? 'Uploading…' : 'Upload image' }}
+                  &#9881;
                 </button>
-              </form>
+              </div>
+              <div v-else class="set-card__image-empty">
+                <span>No images yet</span>
+                <button
+                  type="button"
+                  class="manage-images-gear"
+                  aria-label="Manage images"
+                  @click.stop="openImageManager(set.id)"
+                >
+                  &#9881;
+                </button>
+              </div>
             </div>
 
             <div class="set-card__details">
@@ -248,6 +251,139 @@
       </button>
     </form>
   </div>
+  <div
+    v-if="imageViewerSetId !== null"
+    class="image-viewer-overlay"
+    role="presentation"
+    @click.self="closeImageViewer"
+  >
+    <div class="image-viewer-content">
+      <button
+        type="button"
+        class="icon-button image-viewer-close"
+        aria-label="Close image preview"
+        @click="closeImageViewer"
+      >
+        &times;
+      </button>
+      <button
+        type="button"
+        class="carousel-button image-viewer-nav image-viewer-prev"
+        v-if="getImagesForSet(imageViewerSetId).length > 1"
+        aria-label="Show previous overlay image"
+        @click.stop="showPreviousViewerImage"
+      >
+        &#8249;
+      </button>
+      <img
+        :src="imageViewerUrl"
+        alt="Fullscreen set preview"
+        class="image-viewer-img"
+      />
+      <button
+        type="button"
+        class="carousel-button image-viewer-nav image-viewer-next"
+        v-if="getImagesForSet(imageViewerSetId).length > 1"
+        aria-label="Show next overlay image"
+        @click.stop="showNextViewerImage"
+      >
+        &#8250;
+      </button>
+      <span
+        v-if="getImagesForSet(imageViewerSetId).length > 1"
+        class="image-viewer-counter"
+      >
+        {{ imageViewerIndex + 1 }} / {{ getImagesForSet(imageViewerSetId).length }}
+      </span>
+    </div>
+  </div>
+
+  <div
+    v-if="imageManagerSetId !== null"
+    class="overlay"
+    role="dialog"
+    aria-modal="true"
+    @click.self="closeImageManager"
+  >
+    <div class="card overlay-card image-manager-card">
+      <div class="overlay-header">
+        <h2>Manage images</h2>
+        <button
+          type="button"
+          class="icon-button"
+          aria-label="Close image manager"
+          @click="closeImageManager"
+        >
+          &times;
+        </button>
+      </div>
+
+      <form class="image-upload-form" @submit.prevent="uploadImages(imageManagerSetId!)">
+        <label class="image-upload-input">
+          <span>{{ getSelectedFileName(imageManagerSetId!) }}</span>
+          <input
+            :key="uploadInputResetKey[imageManagerSetId!] ?? 0"
+            type="file"
+            accept="image/*"
+            multiple
+            @change="handleImageSelection(imageManagerSetId!, $event)"
+          />
+        </label>
+        <button
+          type="submit"
+          class="primary-button"
+          :disabled="!imageUploads[imageManagerSetId!]?.length || imageUploading[imageManagerSetId!]"
+        >
+          {{ imageUploading[imageManagerSetId!] ? 'Uploading…' : 'Upload' }}
+        </button>
+      </form>
+
+      <div v-if="getImagesForSet(imageManagerSetId!).length" class="image-manager-list">
+        <div
+          v-for="(image, index) in getImagesForSet(imageManagerSetId!)"
+          :key="image.id"
+          class="image-manager-item"
+        >
+          <img :src="image.url" :alt="image.fileName" />
+          <div class="image-manager-item-info">
+            <span class="image-manager-item-date">{{ formatImageDate(image.createdAt) }}</span>
+            <span class="image-manager-item-source">{{ image.source }}</span>
+          </div>
+          <div class="image-manager-item-actions">
+            <div class="image-manager-sort-buttons">
+              <button
+                type="button"
+                class="image-sort-button"
+                :disabled="index === 0"
+                aria-label="Move up"
+                @click="moveImage(imageManagerSetId!, index, index - 1)"
+              >
+                &#9650;
+              </button>
+              <button
+                type="button"
+                class="image-sort-button"
+                :disabled="index === getImagesForSet(imageManagerSetId!).length - 1"
+                aria-label="Move down"
+                @click="moveImage(imageManagerSetId!, index, index + 1)"
+              >
+                &#9660;
+              </button>
+            </div>
+            <button
+              type="button"
+              class="image-manager-delete"
+              :disabled="imageDeleting[image.id]"
+              @click="deleteImage(imageManagerSetId!, image.id)"
+            >
+              {{ imageDeleting[image.id] ? '…' : 'Delete' }}
+            </button>
+          </div>
+        </div>
+      </div>
+      <p v-else class="image-gallery-empty">No images uploaded yet.</p>
+    </div>
+  </div>
   </main>
 </template>
 
@@ -307,18 +443,38 @@ type SetImage = {
   fileName: string;
   source: string;
   originalUrl: string | null;
+  sortOrder: number;
   createdAt: string;
   url: string;
 };
 
 const setImages = reactive<Record<string, SetImage[]>>({});
-const imageUploads = reactive<Record<string, File | null>>({});
+const imageUploads = reactive<Record<string, File[]>>({});
 const imageUploading = reactive<Record<string, boolean>>({});
 const imageDeleting = reactive<Record<string, boolean>>({});
 const uploadInputResetKey = reactive<Record<string, number>>({});
+const setImageIndexes = reactive<Record<string, number>>({});
+
+const imageViewerSetId = ref<string | null>(null);
+const imageViewerIndex = ref(0);
+const imageManagerSetId = ref<string | null>(null);
 
 const getImagesForSet = (setId: string) => setImages[setId] ?? [];
-const getSelectedFileName = (setId: string) => imageUploads[setId]?.name ?? 'Choose file';
+const getImageIndex = (setId: string) => {
+  const images = getImagesForSet(setId);
+  if (images.length === 0) return 0;
+  return (setImageIndexes[setId] ?? 0) % images.length;
+};
+const getCurrentImage = (setId: string) => {
+  const images = getImagesForSet(setId);
+  return images.length > 0 ? images[getImageIndex(setId)] : null;
+};
+const getSelectedFileName = (setId: string) => {
+  const files = imageUploads[setId];
+  if (!files || files.length === 0) return 'Choose files';
+  if (files.length === 1) return files[0].name;
+  return `${files.length} files selected`;
+};
 const formatImageDate = (value: string) =>
   new Date(value).toLocaleDateString(undefined, {
     day: 'numeric',
@@ -326,9 +482,56 @@ const formatImageDate = (value: string) =>
     year: 'numeric'
   });
 
+const showNextImage = (setId: string) => {
+  const images = getImagesForSet(setId);
+  if (images.length < 2) return;
+  setImageIndexes[setId] = ((setImageIndexes[setId] ?? 0) + 1) % images.length;
+};
+const showPreviousImage = (setId: string) => {
+  const images = getImagesForSet(setId);
+  if (images.length < 2) return;
+  setImageIndexes[setId] = ((setImageIndexes[setId] ?? 0) - 1 + images.length) % images.length;
+};
+
+const openImageViewer = (setId: string) => {
+  imageViewerSetId.value = setId;
+  imageViewerIndex.value = getImageIndex(setId);
+};
+const closeImageViewer = () => {
+  imageViewerSetId.value = null;
+};
+const imageViewerUrl = computed(() => {
+  const setId = imageViewerSetId.value;
+  if (setId === null) return undefined;
+  const images = getImagesForSet(setId);
+  if (images.length === 0) return undefined;
+  return images[imageViewerIndex.value % images.length]?.url;
+});
+const showNextViewerImage = () => {
+  const setId = imageViewerSetId.value;
+  if (setId === null) return;
+  const images = getImagesForSet(setId);
+  if (images.length < 2) return;
+  imageViewerIndex.value = (imageViewerIndex.value + 1) % images.length;
+};
+const showPreviousViewerImage = () => {
+  const setId = imageViewerSetId.value;
+  if (setId === null) return;
+  const images = getImagesForSet(setId);
+  if (images.length < 2) return;
+  imageViewerIndex.value = (imageViewerIndex.value - 1 + images.length) % images.length;
+};
+
+const openImageManager = (setId: string) => {
+  imageManagerSetId.value = setId;
+};
+const closeImageManager = () => {
+  imageManagerSetId.value = null;
+};
+
 const handleImageSelection = (setId: string, event: Event) => {
   const target = event.target as HTMLInputElement;
-  imageUploads[setId] = target.files?.[0] ?? null;
+  imageUploads[setId] = target.files ? Array.from(target.files) : [];
 };
 
 const resetUploadInput = (setId: string) => {
@@ -352,15 +555,15 @@ const refreshImagesForAllSets = async () => {
   await Promise.all(sets.value.map((set) => fetchSetImages(set.id)));
 };
 
-const uploadImage = async (setId: string) => {
-  const file = imageUploads[setId];
-  if (!file) {
-    return;
-  }
+const uploadImages = async (setId: string) => {
+  const files = imageUploads[setId];
+  if (!files || files.length === 0) return;
   imageUploading[setId] = true;
   try {
     const formData = new FormData();
-    formData.append('image', file);
+    for (const file of files) {
+      formData.append('images', file);
+    }
     const response = await fetch(`/api/sets/${setId}/images`, {
       method: 'POST',
       body: formData
@@ -368,11 +571,11 @@ const uploadImage = async (setId: string) => {
     if (!response.ok) {
       throw new Error('Upload failed');
     }
-    imageUploads[setId] = null;
+    imageUploads[setId] = [];
     resetUploadInput(setId);
     await fetchSetImages(setId);
   } catch (error) {
-    console.error('Unable to upload image', error);
+    console.error('Unable to upload images', error);
   } finally {
     imageUploading[setId] = false;
   }
@@ -392,6 +595,29 @@ const deleteImage = async (setId: string, imageId: string) => {
     console.error('Failed to delete image', error);
   } finally {
     imageDeleting[imageId] = false;
+  }
+};
+
+const moveImage = async (setId: string, fromIndex: number, toIndex: number) => {
+  const images = getImagesForSet(setId);
+  if (toIndex < 0 || toIndex >= images.length) return;
+  const reordered = [...images];
+  const [moved] = reordered.splice(fromIndex, 1);
+  reordered.splice(toIndex, 0, moved);
+  setImages[setId] = reordered;
+  try {
+    const response = await fetch(`/api/sets/${setId}/images/order`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageIds: reordered.map((img) => img.id) })
+    });
+    if (!response.ok) {
+      throw new Error('Unable to reorder images');
+    }
+    setImages[setId] = await response.json();
+  } catch (error) {
+    console.error('Failed to reorder images', error);
+    await fetchSetImages(setId);
   }
 };
 
@@ -884,77 +1110,116 @@ onMounted(() => {
 .set-card__image-panel {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  align-items: center;
+  gap: 0.5rem;
   width: 300px;
 }
 
-.image-gallery-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-  gap: 0.5rem;
-}
-
-.image-gallery-item {
-  margin: 0;
-  border-radius: 0.75rem;
-  overflow: hidden;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  background: #fff;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+.set-card__image-wrapper {
   position: relative;
-}
-
-.image-gallery-item img {
   width: 100%;
-  height: 100px;
-  object-fit: cover;
-  display: block;
+  height: 250px;
 }
 
-.image-gallery-item figcaption {
-  padding: 0.35rem 0.5rem;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #475569;
-}
-
-.image-gallery-delete {
-  border: none;
-  border-radius: 999px;
-  padding: 0.4rem 0.75rem;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  background: #f87171;
-  color: #fff;
+.set-card__image {
+  width: 100%;
+  height: 100%;
+  border-radius: 0.75rem;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+  object-fit: contain;
   cursor: pointer;
-  align-self: flex-end;
-  margin-right: 0.2rem;
-  transition: transform 0.2s ease;
+  padding: 3px;
 }
 
-.image-gallery-delete:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
+.set-card__image-controls {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.05), rgba(15, 23, 42, 0.01));
+  pointer-events: none;
+  border-radius: 0.75rem;
 }
 
-.image-gallery-delete:not(:disabled):hover {
-  transform: translateY(-1px);
+.set-card__image-wrapper:hover .set-card__image-controls {
+  opacity: 1;
+}
+
+.set-card__image-controls button {
+  pointer-events: auto;
+}
+
+
+.set-card__image-empty {
+  position: relative;
+  width: 100%;
+  height: 250px;
+  border-radius: 0.75rem;
+  background: #f1f5f9;
+  border: 1px dashed rgba(15, 23, 42, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.manage-images-gear {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+  font-size: 1.05rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 2;
+}
+
+.set-card__image-wrapper:hover .manage-images-gear {
+  opacity: 1;
+}
+
+.set-card__image-empty .manage-images-gear {
+  position: absolute;
+  opacity: 0.6;
+}
+
+.set-card__image-empty:hover .manage-images-gear {
+  opacity: 1;
+}
+
+.manage-images-gear:hover {
+  transform: rotate(45deg);
+  background: #fff;
 }
 
 .image-gallery-empty {
   font-size: 0.85rem;
   color: #64748b;
   text-align: center;
+  padding: 1rem 0;
 }
 
 .image-upload-form {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  margin-bottom: 1rem;
 }
 
 .image-upload-input {
@@ -980,6 +1245,113 @@ onMounted(() => {
 .image-upload-form .primary-button {
   font-size: 0.85rem;
   padding: 0.5rem;
+}
+
+.image-manager-card {
+  width: min(520px, 100%);
+}
+
+.image-manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.image-manager-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.image-manager-item img {
+  width: 80px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  flex-shrink: 0;
+}
+
+.image-manager-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.image-manager-item-date {
+  font-size: 0.8rem;
+  color: #334155;
+}
+
+.image-manager-item-source {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+}
+
+.image-manager-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.image-manager-sort-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.image-sort-button {
+  width: 1.6rem;
+  height: 1.4rem;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  border-radius: 0.3rem;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.55rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  transition: background 0.15s ease;
+}
+
+.image-sort-button:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.image-sort-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.image-manager-delete {
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+  background: #fee2e2;
+  color: #dc2626;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+
+.image-manager-delete:hover {
+  background: #fecaca;
+}
+
+.image-manager-delete:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 .carousel-button {
@@ -1202,5 +1574,18 @@ onMounted(() => {
   top: 5px;
   right: 5px;
   background: rgba(255, 255, 255, 0.9);
+}
+
+.image-viewer-counter {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.8rem;
+  color: #475569;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  letter-spacing: 0.05em;
 }
 </style>

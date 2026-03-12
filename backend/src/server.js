@@ -82,6 +82,7 @@ const CREATE_SET_IMAGES_TABLE_SQL = `
     fileName TEXT NOT NULL,
     source TEXT NOT NULL CHECK (source IN ('upload', 'scrape')),
     originalUrl TEXT,
+    sortOrder INTEGER NOT NULL DEFAULT 0,
     createdAt TEXT NOT NULL,
     FOREIGN KEY (setId) REFERENCES sets(id)
   )
@@ -92,7 +93,7 @@ const INSERT_SET_SQL = `INSERT INTO sets (${BASE_COLUMNS.join(', ')}, createdAt,
 ).join(', ')}, @createdAt, @updatedAt)`;
 
 const INSERT_SET_IMAGE_SQL =
-  'INSERT INTO set_images (id, setId, fileName, source, originalUrl, createdAt) VALUES (@id, @setId, @fileName, @source, @originalUrl, @createdAt)';
+  'INSERT INTO set_images (id, setId, fileName, source, originalUrl, sortOrder, createdAt) VALUES (@id, @setId, @fileName, @source, @originalUrl, @sortOrder, @createdAt)';
 
 const app = express();
 app.use(express.json());
@@ -255,6 +256,7 @@ const migrateLegacySchema = (existingSets, existingImages, hadSetImagesTable) =>
           fileName: image.fileName,
           source: image.source,
           originalUrl: image.originalUrl,
+          sortOrder: image.sortOrder ?? 0,
           createdAt: image.createdAt
         });
       }
@@ -284,6 +286,7 @@ const rebuildSetImagesTable = (existingImages) => {
         fileName: image.fileName,
         source: image.source,
         originalUrl: image.originalUrl,
+        sortOrder: image.sortOrder ?? 0,
         createdAt: image.createdAt
       });
     }
@@ -327,6 +330,8 @@ const ensureSchema = () => {
     ) {
       const existingImages = db.prepare('SELECT * FROM set_images').all();
       rebuildSetImagesTable(existingImages);
+    } else if (!currentSetImagesInfo.some((column) => column.name === 'sortOrder')) {
+      db.exec('ALTER TABLE set_images ADD COLUMN sortOrder INTEGER NOT NULL DEFAULT 0');
     }
   }
 };
@@ -335,7 +340,13 @@ ensureSchema();
 
 const insertImageStmt = db.prepare(INSERT_SET_IMAGE_SQL);
 const selectImagesBySetIdStmt = db.prepare(
-  'SELECT * FROM set_images WHERE setId = ? ORDER BY createdAt DESC'
+  'SELECT * FROM set_images WHERE setId = ? ORDER BY sortOrder ASC, createdAt ASC'
+);
+const selectMaxSortOrderStmt = db.prepare(
+  'SELECT COALESCE(MAX(sortOrder), -1) AS maxOrder FROM set_images WHERE setId = ?'
+);
+const updateImageSortOrderStmt = db.prepare(
+  'UPDATE set_images SET sortOrder = @sortOrder WHERE id = @id'
 );
 const selectImageByIdStmt = db.prepare('SELECT * FROM set_images WHERE id = ?');
 const deleteImageStmt = db.prepare('DELETE FROM set_images WHERE id = ?');
@@ -400,33 +411,38 @@ app.delete('/api/sets/:id', (req, res) => {
 app.post(
   '/api/sets/:setId/images',
   ensureSetExists,
-  upload.single('image'),
+  upload.array('images', 20),
   (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ error: 'image file is required' });
+    const files = req.files;
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: 'at least one image file is required' });
     }
     const setId = Number(req.params.setId);
-    const fileName = req.file.filename;
+    const { maxOrder } = selectMaxSortOrderStmt.get(setId);
     const now = new Date().toISOString();
-    const id = randomUUID();
-    insertImageStmt.run({
-      id,
-      setId,
-      fileName,
-      source: 'upload',
-      originalUrl: null,
-      createdAt: now
-    });
-    res.status(201).json(
-      serializeImageRow({
+    const created = files.map((file, index) => {
+      const id = randomUUID();
+      const sortOrder = maxOrder + 1 + index;
+      insertImageStmt.run({
         id,
         setId,
-        fileName,
+        fileName: file.filename,
         source: 'upload',
         originalUrl: null,
+        sortOrder,
         createdAt: now
-      })
-    );
+      });
+      return serializeImageRow({
+        id,
+        setId,
+        fileName: file.filename,
+        source: 'upload',
+        originalUrl: null,
+        sortOrder,
+        createdAt: now
+      });
+    });
+    res.status(201).json(created);
   }
 );
 
@@ -472,6 +488,28 @@ app.delete('/api/sets/:setId/images/:imageId', ensureSetExists, (req, res) => {
   }
   deleteImageStmt.run(imageId);
   res.status(204).send();
+});
+
+app.put('/api/sets/:setId/images/order', ensureSetExists, (req, res) => {
+  const imageIds = req.body.imageIds;
+  if (!Array.isArray(imageIds)) {
+    return res.status(400).json({ error: 'imageIds array is required' });
+  }
+  const setId = Number(req.params.setId);
+  const existingImages = selectImagesBySetIdStmt.all(setId);
+  const existingIds = new Set(existingImages.map((img) => img.id));
+  const allValid = imageIds.every((id) => existingIds.has(id));
+  if (!allValid || imageIds.length !== existingIds.size) {
+    return res.status(400).json({ error: 'imageIds must contain exactly all image IDs for this set' });
+  }
+  const updateMany = db.transaction((ids) => {
+    for (let i = 0; i < ids.length; i++) {
+      updateImageSortOrderStmt.run({ id: ids[i], sortOrder: i });
+    }
+  });
+  updateMany(imageIds);
+  const rows = selectImagesBySetIdStmt.all(setId);
+  res.json(rows.map(serializeImageRow));
 });
 
 const STATIC_DIR = process.env.STATIC_DIR || path.join(__dirname, '../../public');
