@@ -5,7 +5,7 @@
       <div class="controls-bar">
         <div class="chip-group">
           <span class="controls-label">Filter</span>
-          <div class="chip filter-chip">
+          <div class="chip filter-chip" :class="{ active: filters.manufacturer }">
             <span>{{ filters.manufacturer || 'Manufacturer' }}</span>
             <select v-model="filters.manufacturer">
               <option value="">All</option>
@@ -14,7 +14,7 @@
               </option>
             </select>
           </div>
-          <div class="chip filter-chip">
+          <div class="chip filter-chip" :class="{ active: filters.theme }">
             <span>{{ filters.theme || 'Theme' }}</span>
             <select v-model="filters.theme">
               <option value="">All</option>
@@ -23,7 +23,7 @@
               </option>
             </select>
           </div>
-          <div class="chip filter-chip">
+          <div class="chip filter-chip" :class="{ active: filters.status }">
             <span>{{ filters.status || 'Status' }}</span>
             <select v-model="filters.status">
               <option value="">All</option>
@@ -32,7 +32,7 @@
               </option>
             </select>
           </div>
-          <div class="chip filter-chip">
+          <div class="chip filter-chip" :class="{ active: filters.brickSize }">
             <span>{{ filters.brickSize || 'Brick size' }}</span>
             <select v-model="filters.brickSize">
               <option value="">All</option>
@@ -58,11 +58,11 @@
                 {{ sortField === option.key ? (sortDirection === 'asc' ? '▲' : '▼') : '' }}
               </span>
             </button>
-            <button type="button" class="chip reset-chip" @click="resetFilters">
-              Reset
-            </button>
           </div>
         </div>
+        <button type="button" class="chip reset-chip" @click="resetFilters">
+          Reset
+        </button>
       </div>
     </section>
     <section v-if="filteredSets.length > 0" class="card stats-card">
@@ -594,6 +594,12 @@
       </div>
       <p v-else class="image-gallery-empty">No images uploaded yet.</p>
     </div>
+  </div>
+  <div class="app-footer">
+    <span v-if="appVersion" class="app-version">v{{ appVersion }}</span>
+    <button type="button" class="dark-mode-toggle" @click="toggleDarkMode" :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'">
+      {{ isDark ? '☀️' : '🌙' }}
+    </button>
   </div>
   </main>
 </template>
@@ -1331,19 +1337,218 @@ const saveSet = async () => {
   }
 };
 
-onMounted(() => {
+const appVersion = ref('');
+
+const isDark = ref(false);
+const applyDarkMode = (dark: boolean) => {
+  isDark.value = dark;
+  document.documentElement.classList.toggle('dark', dark);
+};
+const toggleDarkMode = () => {
+  const next = !isDark.value;
+  applyDarkMode(next);
+  localStorage.setItem('brick-library-dark', next ? '1' : '0');
+};
+
+onMounted(async () => {
+  const stored = localStorage.getItem('brick-library-dark');
+  if (stored !== null) {
+    applyDarkMode(stored === '1');
+  } else {
+    applyDarkMode(window.matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+
   loadSets();
+  try {
+    const res = await fetch('/api/version');
+    if (res.ok) appVersion.value = (await res.json()).version;
+  } catch { /* ignore */ }
 });
 </script>
 
 <style scoped>
+:global(:root) {
+  --bg-page: linear-gradient(160deg, #e8ecf1 0%, #f0f2f5 40%, #eae4da 100%);
+  --bg-card: rgba(255, 255, 255, 0.9);
+  --bg-surface: #fff;
+  --bg-elevated: #f8fafc;
+  --bg-inset: #f1f5f9;
+  --bg-subtle: rgba(15, 23, 42, 0.06);
+  --bg-overlay: rgba(15, 23, 42, 0.65);
+  --bg-overlay-heavy: rgba(15, 23, 42, 0.7);
+  --bg-toggle: #cbd5e1;
+  --bg-toggle-knob: #fff;
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-tertiary: #64748b;
+  --text-muted: #94a3b8;
+  --text-strong: #334155;
+
+  --border-light: rgba(15, 23, 42, 0.08);
+  --border-default: rgba(15, 23, 42, 0.1);
+  --border-medium: rgba(15, 23, 42, 0.15);
+  --border-input: rgba(15, 23, 42, 0.2);
+  --border-dashed: rgba(15, 23, 42, 0.3);
+
+  --accent: #ffd502;
+  --accent-soft: #fff699;
+  --accent-text: #000;
+
+  --shadow-card: 0 15px 35px rgba(15, 23, 42, 0.1);
+  --shadow-button: 0 8px 16px rgba(15, 23, 42, 0.1);
+  --shadow-button-hover: 0 10px 18px rgba(15, 23, 42, 0.15);
+  --shadow-gear: 0 2px 8px rgba(15, 23, 42, 0.12);
+  --shadow-viewer: 0 25px 50px rgba(0, 0, 0, 0.35);
+  --shadow-nav: 0 10px 20px rgba(0, 0, 0, 0.15);
+
+  --color-danger: #dc2626;
+  --bg-danger-soft: #fee2e2;
+  --bg-danger-hover: #fef2f2;
+  --border-danger: #fecaca;
+
+  --color-success: #16a34a;
+  --bg-success-soft: #f0fdf4;
+
+  --status-new-bg: #dbeafe;
+  --status-new-text: #1e40af;
+  --status-building-bg: #fef3c7;
+  --status-building-text: #92400e;
+  --status-built-bg: #d1fae5;
+  --status-built-text: #065f46;
+  --status-sold-bg: #f1f5f9;
+  --status-sold-text: #64748b;
+  --status-default-bg: #e2e8f0;
+
+  --chip-instructions-bg: rgba(233, 111, 20, 0.12);
+  --chip-instructions-text: #e96f14;
+  --chip-instructions-bg-hover: rgba(233, 111, 20, 0.22);
+  --chip-instructions-text-hover: #c75d0e;
+  --chip-retired-bg: rgba(189, 0, 0, 0.1);
+  --chip-retired-text: #bd0000;
+  --chip-retired-bg-hover: rgba(189, 0, 0, 0.2);
+  --chip-retired-text-hover: #9a0000;
+  --chip-info-bg: rgba(30, 64, 175, 0.1);
+  --chip-info-text: #1e40af;
+  --chip-info-bg-hover: rgba(30, 64, 175, 0.18);
+  --chip-info-text-hover: #1a3794;
+}
+
+:global(.dark) {
+  --bg-page: linear-gradient(160deg, #0f172a 0%, #111d32 40%, #1a1525 100%);
+  --bg-card: rgba(30, 41, 59, 0.95);
+  --bg-surface: #1e293b;
+  --bg-elevated: #1e293b;
+  --bg-inset: #0f172a;
+  --bg-subtle: rgba(148, 163, 184, 0.1);
+  --bg-overlay: rgba(0, 0, 0, 0.75);
+  --bg-overlay-heavy: rgba(0, 0, 0, 0.8);
+  --bg-toggle: #475569;
+  --bg-toggle-knob: #e2e8f0;
+
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #94a3b8;
+  --text-muted: #64748b;
+  --text-strong: #cbd5e1;
+
+  --border-light: rgba(148, 163, 184, 0.1);
+  --border-default: rgba(148, 163, 184, 0.12);
+  --border-medium: rgba(148, 163, 184, 0.18);
+  --border-input: rgba(148, 163, 184, 0.25);
+  --border-dashed: rgba(148, 163, 184, 0.35);
+
+  --accent: #ffd502;
+  --accent-soft: rgba(255, 213, 2, 0.2);
+  --accent-text: #000;
+
+  --shadow-card: 0 15px 35px rgba(0, 0, 0, 0.3);
+  --shadow-button: 0 8px 16px rgba(0, 0, 0, 0.25);
+  --shadow-button-hover: 0 10px 18px rgba(0, 0, 0, 0.35);
+  --shadow-gear: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-viewer: 0 25px 50px rgba(0, 0, 0, 0.6);
+  --shadow-nav: 0 10px 20px rgba(0, 0, 0, 0.35);
+
+  --color-danger: #f87171;
+  --bg-danger-soft: rgba(248, 113, 113, 0.15);
+  --bg-danger-hover: rgba(248, 113, 113, 0.1);
+  --border-danger: rgba(248, 113, 113, 0.3);
+
+  --color-success: #4ade80;
+  --bg-success-soft: rgba(74, 222, 128, 0.1);
+
+  --status-new-bg: rgba(59, 130, 246, 0.2);
+  --status-new-text: #60a5fa;
+  --status-building-bg: rgba(251, 191, 36, 0.2);
+  --status-building-text: #fbbf24;
+  --status-built-bg: rgba(52, 211, 153, 0.2);
+  --status-built-text: #34d399;
+  --status-sold-bg: rgba(148, 163, 184, 0.15);
+  --status-sold-text: #94a3b8;
+  --status-default-bg: rgba(148, 163, 184, 0.2);
+
+  --chip-instructions-bg: rgba(233, 111, 20, 0.2);
+  --chip-instructions-text: #fb923c;
+  --chip-instructions-bg-hover: rgba(233, 111, 20, 0.3);
+  --chip-instructions-text-hover: #fdba74;
+  --chip-retired-bg: rgba(248, 113, 113, 0.15);
+  --chip-retired-text: #f87171;
+  --chip-retired-bg-hover: rgba(248, 113, 113, 0.25);
+  --chip-retired-text-hover: #fca5a5;
+  --chip-info-bg: rgba(96, 165, 250, 0.15);
+  --chip-info-text: #60a5fa;
+  --chip-info-bg-hover: rgba(96, 165, 250, 0.25);
+  --chip-info-text-hover: #93c5fd;
+}
+
 :global(body) {
   margin: 0;
+  background: var(--bg-page);
+  background-attachment: fixed;
+  min-height: 100vh;
+  color: var(--text-primary);
+  transition: color 0.2s;
 }
 
 .page {
   min-height: 100vh;
   padding: 2rem;
+  position: relative;
+}
+
+.app-footer {
+  position: fixed;
+  bottom: 0.5rem;
+  right: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  z-index: 10;
+}
+
+.app-version {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.dark-mode-toggle {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  cursor: pointer;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-gear);
+  transition: transform 0.2s;
+}
+
+.dark-mode-toggle:hover {
+  transform: scale(1.1);
 }
 
 .hero {
@@ -1355,7 +1560,7 @@ onMounted(() => {
   letter-spacing: 0.2em;
   text-transform: uppercase;
   font-size: 0.75rem;
-  color: #0f172a;
+  color: var(--text-primary);
 }
 
 .content-grid {
@@ -1364,10 +1569,10 @@ onMounted(() => {
 }
 
 .card {
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--bg-card);
   border-radius: 1.25rem;
   padding: 1.5rem;
-  box-shadow: 0 15px 35px rgba(15, 23, 42, 0.1);
+  box-shadow: var(--shadow-card);
 }
 
 .form-card button {
@@ -1376,8 +1581,8 @@ onMounted(() => {
   margin-top: 0.75rem;
   border: none;
   border-radius: 0.9rem;
-  background: #ffd502;
-  color: #000;
+  background: var(--accent);
+  color: var(--accent-text);
   font-size: 1rem;
   cursor: pointer;
 }
@@ -1385,7 +1590,7 @@ onMounted(() => {
 .text-button {
   background: none;
   border: none;
-  color: #475569;
+  color: var(--text-secondary);
   font-size: 0.9rem;
   margin-top: 0.5rem;
   cursor: pointer;
@@ -1395,23 +1600,23 @@ onMounted(() => {
   width: 100%;
   padding: 0.6rem;
   margin-top: 1.5rem;
-  border: 1px solid #fecaca;
+  border: 1px solid var(--border-danger);
   border-radius: 0.9rem;
-  background: #fff;
-  color: #dc2626;
+  background: var(--bg-surface);
+  color: var(--color-danger);
   font-size: 0.85rem;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .delete-set-button:hover {
-  background: #fef2f2;
+  background: var(--bg-danger-hover);
 }
 
 .delete-set-button.confirming {
-  background: #dc2626;
+  background: var(--color-danger);
   color: #fff;
-  border-color: #dc2626;
+  border-color: var(--color-danger);
   font-weight: 600;
 }
 
@@ -1424,7 +1629,7 @@ onMounted(() => {
   margin-top: 0.75rem;
   background: none;
   border: none;
-  color: #0f172a;
+  color: var(--text-primary);
   font-weight: 600;
   cursor: pointer;
   padding: 0;
@@ -1440,7 +1645,9 @@ onMounted(() => {
   padding: 0.65rem;
   margin-top: 0.15rem;
   border-radius: 0.65rem;
-  border: 1px solid rgba(15, 23, 42, 0.2);
+  border: 1px solid var(--border-input);
+  background: var(--bg-surface);
+  color: var(--text-primary);
   font-size: 0.9rem;
 }
 
@@ -1463,7 +1670,9 @@ onMounted(() => {
   padding: 0.65rem;
   margin-top: 0.15rem;
   border-radius: 0.65rem;
-  border: 1px solid rgba(15, 23, 42, 0.2);
+  border: 1px solid var(--border-input);
+  background: var(--bg-surface);
+  color: var(--text-primary);
   font-size: 0.9rem;
   font-family: inherit;
   resize: vertical;
@@ -1473,7 +1682,7 @@ onMounted(() => {
   display: flex;
   gap: 0;
   margin-bottom: 1rem;
-  border-bottom: 2px solid rgba(15, 23, 42, 0.1);
+  border-bottom: 2px solid var(--border-default);
 }
 
 .form-tabs button {
@@ -1484,15 +1693,15 @@ onMounted(() => {
   margin-bottom: -2px;
   background: none;
   font-size: 0.9rem;
-  color: #64748b;
+  color: var(--text-tertiary);
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
   border-radius: 0px;
 }
 
 .form-tabs button.active {
-  color: #0f172a;
-  border-bottom-color: #ffd502;
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
   font-weight: 600;
 }
 
@@ -1521,7 +1730,7 @@ onMounted(() => {
   position: absolute;
   cursor: pointer;
   inset: 0;
-  background: #cbd5e1;
+  background: var(--bg-toggle);
   border-radius: 24px;
   transition: background 0.2s;
 }
@@ -1533,13 +1742,13 @@ onMounted(() => {
   width: 18px;
   left: 3px;
   bottom: 3px;
-  background: #fff;
+  background: var(--bg-toggle-knob);
   border-radius: 50%;
   transition: transform 0.2s;
 }
 
 .toggle-switch input:checked + .toggle-slider {
-  background: #ffd502;
+  background: var(--accent);
 }
 
 .toggle-switch input:checked + .toggle-slider::before {
@@ -1561,11 +1770,11 @@ onMounted(() => {
 }
 
 .controls-card {
-  padding-bottom: 5px;
+  padding: 0.75rem 1.25rem;
 }
 
 .stats-card {
-  padding: 1rem 1.25rem;
+  padding: 0.75rem 1.25rem;
 }
 
 .stats-grid {
@@ -1579,7 +1788,7 @@ onMounted(() => {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .stats-grid dd {
@@ -1591,7 +1800,6 @@ onMounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
-  margin-bottom: 1rem;
 }
 
 .chip-group {
@@ -1602,23 +1810,30 @@ onMounted(() => {
 }
 
 .controls-label {
-  font-size: 0.75rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  font-size: 0.6rem;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: #495c6a;
+  color: var(--text-tertiary);
 }
 
 .chip {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
-  padding: 0.35rem 0.5rem;
+  padding: 0.25rem 0.55rem;
   border-radius: 999px;
-  background: #fff;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  font-size: 0.75rem;
-  min-width: 120px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   position: relative;
+  color: var(--text-primary);
 }
 
 .chip select {
@@ -1636,6 +1851,12 @@ onMounted(() => {
   pointer-events: none;
 }
 
+.filter-chip.active {
+  border-color: var(--chip-instructions-text);
+  background: var(--chip-instructions-bg);
+  color: var(--chip-instructions-text);
+}
+
 .sort-chips {
   display: flex;
   gap: 0.4rem;
@@ -1643,11 +1864,15 @@ onMounted(() => {
 }
 
 .sort-chip {
-  border: 1px solid rgba(15, 23, 42, 0.15);
+  border: 1px solid var(--border-medium);
   border-radius: 999px;
-  padding: 0.35rem 0.6rem;
-  font-size: 0.75rem;
-  background: #fff;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--bg-surface);
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: 0.35rem;
@@ -1656,31 +1881,30 @@ onMounted(() => {
 }
 
 .sort-chip.active {
-  border-color: #ffd502;
-  background: #fff699;
+  border-color: var(--chip-instructions-text);
+  background: var(--chip-instructions-bg);
+  color: var(--chip-instructions-text);
 }
 
 .sort-direction {
   font-size: 0.65rem;
-  color: #7e869a;
+  color: var(--text-muted);
 }
 
 .reset-chip {
-  border: 1px solid rgba(15, 23, 42, 0.15);
+  border: 1px solid var(--border-medium);
   border-radius: 999px;
-  padding: 0.35rem 0.8rem;
-  font-size: 0.75rem;
-  background: #fff;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.6rem;
+  background: var(--bg-surface);
   cursor: pointer;
-  color: #f56060;
-  position: absolute;
-  right: -2px;
-  transform: translateX(-50%);
+  color: var(--color-danger);
+  margin-left: auto;
 }
 
 .reset-chip:hover {
-  border: 1px solid rgba(247, 30, 30, 0.45);
-  background: #f7cfcf;
+  border: 1px solid var(--border-danger);
+  background: var(--bg-danger-soft);
   transition: filter 0.2s ease;
 }
 
@@ -1702,14 +1926,14 @@ onMounted(() => {
 
 .count {
   font-weight: 600;
-  color: #475569;
+  color: var(--text-secondary);
 }
 
 .primary-button {
   border: none;
   border-radius: 0.9rem;
-  background: #ffd502;
-  color: #000;
+  background: var(--accent);
+  color: var(--accent-text);
   font-size: 0.95rem;
   font-weight: 600;
   padding: 0.65rem 1.25rem;
@@ -1730,8 +1954,8 @@ onMounted(() => {
 .set-card {
   padding: 1rem;
   border-radius: 1rem;
-  background: #f8fafc;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
   cursor: pointer;
 }
 
@@ -1759,7 +1983,7 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   border-radius: 0.75rem;
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+  box-shadow: inset 0 0 0 1px var(--border-light);
   object-fit: contain;
   cursor: pointer;
   padding: 3px;
@@ -1793,13 +2017,13 @@ onMounted(() => {
   width: 100%;
   height: 250px;
   border-radius: 0.75rem;
-  background: #f1f5f9;
-  border: 1px dashed rgba(15, 23, 42, 0.15);
+  background: var(--bg-inset);
+  border: 1px dashed var(--border-medium);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 0.85rem;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .manage-images-gear {
@@ -1810,15 +2034,15 @@ onMounted(() => {
   height: 2rem;
   border-radius: 50%;
   border: none;
-  background: rgba(255, 255, 255, 0.85);
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-gear);
   cursor: pointer;
   font-size: 1.05rem;
   line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #475569;
+  color: var(--text-secondary);
   opacity: 0;
   transition: opacity 0.2s ease, transform 0.2s ease;
   z-index: 2;
@@ -1839,12 +2063,12 @@ onMounted(() => {
 
 .manage-images-gear:hover {
   transform: rotate(45deg);
-  background: #fff;
+  background: var(--bg-surface);
 }
 
 .image-gallery-empty {
   font-size: 0.85rem;
-  color: #64748b;
+  color: var(--text-tertiary);
   text-align: center;
   padding: 1rem 0;
 }
@@ -1863,9 +2087,10 @@ onMounted(() => {
   justify-content: space-between;
   padding: 0.65rem 0.9rem;
   border-radius: 0.75rem;
-  border: 1px dashed rgba(15, 23, 42, 0.3);
+  border: 1px dashed var(--border-dashed);
   font-size: 0.85rem;
-  background: #f8fafc;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
   cursor: pointer;
 }
 
@@ -1897,8 +2122,8 @@ onMounted(() => {
   gap: 0.75rem;
   padding: 0.5rem;
   border-radius: 0.75rem;
-  background: #f8fafc;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
 }
 
 .image-manager-item img {
@@ -1919,14 +2144,14 @@ onMounted(() => {
 
 .image-manager-item-date {
   font-size: 0.8rem;
-  color: #334155;
+  color: var(--text-strong);
 }
 
 .image-manager-item-source {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .image-manager-item-actions {
@@ -1945,21 +2170,21 @@ onMounted(() => {
 .image-sort-button {
   width: 1.6rem;
   height: 1.4rem;
-  border: 1px solid rgba(15, 23, 42, 0.15);
+  border: 1px solid var(--border-medium);
   border-radius: 0.3rem;
-  background: #fff;
+  background: var(--bg-surface);
   cursor: pointer;
   font-size: 0.55rem;
   line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #475569;
+  color: var(--text-secondary);
   transition: background 0.15s ease;
 }
 
 .image-sort-button:hover:not(:disabled) {
-  background: #f1f5f9;
+  background: var(--bg-inset);
 }
 
 .image-sort-button:disabled {
@@ -1972,15 +2197,15 @@ onMounted(() => {
   border-radius: 0.5rem;
   padding: 0.4rem 0.75rem;
   font-size: 0.75rem;
-  background: #fee2e2;
-  color: #dc2626;
+  background: var(--bg-danger-soft);
+  color: var(--color-danger);
   cursor: pointer;
   flex-shrink: 0;
   transition: background 0.15s ease;
 }
 
 .image-manager-delete:hover {
-  background: #fecaca;
+  background: var(--border-danger);
 }
 
 .image-manager-delete:disabled {
@@ -1992,23 +2217,23 @@ onMounted(() => {
   width: 100%;
   padding: 0.5rem;
   margin-top: 0.5rem;
-  border: 1px solid #fecaca;
+  border: 1px solid var(--border-danger);
   border-radius: 0.6rem;
-  background: #fff;
-  color: #dc2626;
+  background: var(--bg-surface);
+  color: var(--color-danger);
   font-size: 0.8rem;
   cursor: pointer;
   transition: background 0.15s ease;
 }
 
 .delete-all-button:hover {
-  background: #fef2f2;
+  background: var(--bg-danger-hover);
 }
 
 .delete-all-button.confirming {
-  background: #dc2626;
+  background: var(--color-danger);
   color: #fff;
-  border-color: #dc2626;
+  border-color: var(--color-danger);
   font-weight: 600;
 }
 
@@ -2018,7 +2243,7 @@ onMounted(() => {
 }
 
 .scrape-section {
-  border: 1px solid rgba(15, 23, 42, 0.1);
+  border: 1px solid var(--border-default);
   border-radius: 0.75rem;
   padding: 0;
   margin-bottom: 0.5rem;
@@ -2028,13 +2253,13 @@ onMounted(() => {
   padding: 0.6rem 0.9rem;
   font-size: 0.85rem;
   font-weight: 600;
-  color: #475569;
+  color: var(--text-secondary);
   cursor: pointer;
   user-select: none;
 }
 
 .scrape-section[open] .scrape-toggle {
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  border-bottom: 1px solid var(--border-light);
   margin-bottom: 0.5rem;
 }
 
@@ -2054,25 +2279,25 @@ onMounted(() => {
 .scrape-mode-tab {
   flex: 1;
   padding: 0.4rem;
-  border: 1px solid rgba(15, 23, 42, 0.15);
+  border: 1px solid var(--border-medium);
   border-radius: 0.5rem;
-  background: #fff;
+  background: var(--bg-surface);
   font-size: 0.8rem;
   cursor: pointer;
-  color: #64748b;
+  color: var(--text-tertiary);
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .scrape-mode-tab.active {
-  background: #ffd502;
-  color: #000;
-  border-color: #ffd502;
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
   font-weight: 600;
 }
 
 .scrape-form label {
   font-size: 0.8rem;
-  color: #475569;
+  color: var(--text-secondary);
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
@@ -2080,14 +2305,16 @@ onMounted(() => {
 
 .label-hint {
   font-weight: 400;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .scrape-form input,
 .scrape-form textarea {
   padding: 0.55rem 0.7rem;
   border-radius: 0.6rem;
-  border: 1px solid rgba(15, 23, 42, 0.2);
+  border: 1px solid var(--border-input);
+  background: var(--bg-surface);
+  color: var(--text-primary);
   font-size: 0.85rem;
   font-family: inherit;
   resize: vertical;
@@ -2106,17 +2333,17 @@ onMounted(() => {
 
 .scrape-result {
   font-size: 0.8rem;
-  color: #16a34a;
+  color: var(--color-success);
   padding: 0.4rem 0.6rem;
-  background: #f0fdf4;
+  background: var(--bg-success-soft);
   border-radius: 0.5rem;
 }
 
 .scrape-error {
   font-size: 0.8rem;
-  color: #dc2626;
+  color: var(--color-danger);
   padding: 0.4rem 0.6rem;
-  background: #fef2f2;
+  background: var(--bg-danger-hover);
   border-radius: 0.5rem;
 }
 
@@ -2125,8 +2352,9 @@ onMounted(() => {
   height: 2.5rem;
   border-radius: 0.75rem;
   border: none;
-  background: #ffffff;
-  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.1);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-button);
   cursor: pointer;
   font-size: 1rem;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -2139,7 +2367,7 @@ onMounted(() => {
 
 .carousel-button:not(:disabled):hover {
   transform: translateY(-1px);
-  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.15);
+  box-shadow: var(--shadow-button-hover);
 }
 
 .set-card__details {
@@ -2184,7 +2412,7 @@ onMounted(() => {
 .set-card__manufacturer {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #475569;
+  color: var(--text-secondary);
 }
 
 .set-card__status {
@@ -2192,33 +2420,33 @@ onMounted(() => {
   font-weight: 600;
   padding: 0.2rem 0.55rem;
   border-radius: 999px;
-  background: #e2e8f0;
-  color: #334155;
+  background: var(--status-default-bg);
+  color: var(--text-strong);
 }
 
 .set-card__status[data-status="New"] {
-  background: #dbeafe;
-  color: #1e40af;
+  background: var(--status-new-bg);
+  color: var(--status-new-text);
 }
 
 .set-card__status[data-status="Building"] {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--status-building-bg);
+  color: var(--status-building-text);
 }
 
 .set-card__status[data-status="Built"] {
-  background: #d1fae5;
-  color: #065f46;
+  background: var(--status-built-bg);
+  color: var(--status-built-text);
 }
 
 .set-card__status[data-status="Disassembled"] {
-  background: #d1fae5;
-  color: #065f46;
+  background: var(--status-built-bg);
+  color: var(--status-built-text);
 }
 
 .set-card__status[data-status="Sold"] {
-  background: #f1f5f9;
-  color: #64748b;
+  background: var(--status-sold-bg);
+  color: var(--status-sold-text);
 }
 
 .set-card__name {
@@ -2229,7 +2457,7 @@ onMounted(() => {
 
 .set-card__year {
   font-weight: 400;
-  color: #64748b;
+  color: var(--text-tertiary);
   margin-left: 0.35em;
   font-size: 0.95em;
 }
@@ -2237,8 +2465,7 @@ onMounted(() => {
 .set-card__number {
   margin: 0.15rem 0;
   font-size: 0.75rem;
-  color: #0f172a;
-  opacity: 0.45;
+  color: var(--text-muted);
 }
 
 .set-card__meta {
@@ -2252,7 +2479,7 @@ onMounted(() => {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .set-card__meta dd {
@@ -2283,62 +2510,62 @@ onMounted(() => {
   letter-spacing: 0.04em;
   padding: 0.2rem 0.5rem;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
-  color: #64748b;
+  background: var(--bg-subtle);
+  color: var(--text-tertiary);
   text-decoration: none;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
 
 .detail-chip:hover {
-  background: rgba(15, 23, 42, 0.12);
-  color: #334155;
+  background: var(--border-medium);
+  color: var(--text-strong);
 }
 
 .detail-chip.active {
-  background: #ffd502;
-  color: #0f172a;
+  background: var(--accent);
+  color: var(--accent-text);
 }
 
 .detail-chip--instructions {
-  background: rgba(233, 111, 20, 0.12);
-  color: #e96f14;
+  background: var(--chip-instructions-bg);
+  color: var(--chip-instructions-text);
 }
 
 .detail-chip--instructions:hover {
-  background: rgba(233, 111, 20, 0.22);
-  color: #c75d0e;
+  background: var(--chip-instructions-bg-hover);
+  color: var(--chip-instructions-text-hover);
 }
 
 .detail-chip--retired {
-  background: rgba(189, 0, 0, 0.1);
-  color: #bd0000;
+  background: var(--chip-retired-bg);
+  color: var(--chip-retired-text);
 }
 
 .detail-chip--retired:hover {
-  background: rgba(189, 0, 0, 0.2);
-  color: #9a0000;
+  background: var(--chip-retired-bg-hover);
+  color: var(--chip-retired-text-hover);
 }
 
 .detail-chip--info {
-  background: rgba(30, 64, 175, 0.1);
-  color: #1e40af;
+  background: var(--chip-info-bg);
+  color: var(--chip-info-text);
 }
 
 .detail-chip--info:hover {
-  background: rgba(30, 64, 175, 0.18);
-  color: #1a3794;
+  background: var(--chip-info-bg-hover);
+  color: var(--chip-info-text-hover);
 }
 
 .empty {
   padding: 1rem 0;
-  color: #475569;
+  color: var(--text-secondary);
 }
 
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.65);
+  background: var(--bg-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2373,8 +2600,9 @@ onMounted(() => {
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 0.75rem;
-  border: 1px solid rgba(15, 23, 42, 0.2);
-  background: #fff;
+  border: 1px solid var(--border-input);
+  background: var(--bg-surface);
+  color: var(--text-primary);
   font-size: 1.4rem;
   line-height: 1;
   cursor: pointer;
@@ -2383,7 +2611,7 @@ onMounted(() => {
 .image-viewer-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.7);
+  background: var(--bg-overlay-heavy);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2395,10 +2623,10 @@ onMounted(() => {
   position: relative;
   max-width: min(85vw, 900px);
   width: 100%;
-  background: #fff;
+  background: var(--bg-surface);
   border-radius: 1rem;
   padding: 1.5rem 2rem;
-  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-viewer);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2414,8 +2642,9 @@ onMounted(() => {
   border: none;
   font-size: 1.4rem;
   line-height: 1;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-nav);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -2457,7 +2686,7 @@ onMounted(() => {
   position: absolute;
   top: 5px;
   right: 5px;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--bg-surface);
 }
 
 .image-viewer-counter {
@@ -2466,8 +2695,8 @@ onMounted(() => {
   left: 50%;
   transform: translateX(-50%);
   font-size: 0.8rem;
-  color: #475569;
-  background: rgba(255, 255, 255, 0.85);
+  color: var(--text-secondary);
+  background: var(--bg-surface);
   padding: 0.2rem 0.6rem;
   border-radius: 999px;
   letter-spacing: 0.05em;
