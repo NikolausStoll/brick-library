@@ -17,41 +17,43 @@
       <div class="controls-bar">
         <div class="chip-group">
           <span class="controls-label">Filter</span>
-          <div class="chip filter-chip" :class="{ active: filters.manufacturer }">
-            <span>{{ filters.manufacturer || 'Manufacturer' }}</span>
-            <select v-model="filters.manufacturer">
-              <option value="">All</option>
-              <option v-for="manufacturer in activeManufacturers" :key="manufacturer" :value="manufacturer">
-                {{ manufacturer }}
-              </option>
-            </select>
-          </div>
-          <div class="chip filter-chip" :class="{ active: filters.theme }">
-            <span>{{ filters.theme || 'Theme' }}</span>
-            <select v-model="filters.theme">
-              <option value="">All</option>
-              <option v-for="theme in activeThemes" :key="theme" :value="theme">
-                {{ theme }}
-              </option>
-            </select>
-          </div>
-          <div class="chip filter-chip" :class="{ active: filters.status }">
-            <span>{{ filters.status || 'Status' }}</span>
-            <select v-model="filters.status">
-              <option value="">All</option>
-              <option v-for="status in statuses" :key="status" :value="status">
-                {{ status }}
-              </option>
-            </select>
-          </div>
-          <div class="chip filter-chip" :class="{ active: filters.brickSize }">
-            <span>{{ filters.brickSize || 'Brick size' }}</span>
-            <select v-model="filters.brickSize">
-              <option value="">All</option>
-              <option v-for="size in brickSizes" :key="size" :value="size">
-                {{ size }}
-              </option>
-            </select>
+          <div class="filter-chips">
+            <div class="chip filter-chip" :class="{ active: filters.manufacturer }">
+              <span>{{ filters.manufacturer || isMobileLayout ? 'Mfr.' : 'Manufacturer' }}</span>
+              <select v-model="filters.manufacturer">
+                <option value="">All</option>
+                <option v-for="manufacturer in activeManufacturers" :key="manufacturer" :value="manufacturer">
+                  {{ manufacturer }}
+                </option>
+              </select>
+            </div>
+            <div class="chip filter-chip" :class="{ active: filters.theme }">
+              <span>{{ filters.theme || 'Theme' }}</span>
+              <select v-model="filters.theme">
+                <option value="">All</option>
+                <option v-for="theme in activeThemes" :key="theme" :value="theme">
+                  {{ theme }}
+                </option>
+              </select>
+            </div>
+            <div class="chip filter-chip" :class="{ active: filters.status }">
+              <span>{{ filters.status || 'Status' }}</span>
+              <select v-model="filters.status">
+                <option value="">All</option>
+                <option v-for="status in statuses" :key="status" :value="status">
+                  {{ status }}
+                </option>
+              </select>
+            </div>
+            <div class="chip filter-chip" :class="{ active: filters.brickSize }">
+              <span>{{ filters.brickSize || 'Brick size' }}</span>
+              <select v-model="filters.brickSize">
+                <option value="">All</option>
+                <option v-for="size in brickSizes" :key="size" :value="size">
+                  {{ size }}
+                </option>
+              </select>
+            </div>
           </div>
         </div>
         <div class="chip-group">
@@ -188,11 +190,13 @@
                   <dd>{{ set.pieceCount ?? '—' }}</dd>
                 </div>
                 <div>
-                  <dt>Price/Piece</dt>
+                  <dt v-if="isMobileLayout">ct/piece</dt>
+                  <dt v-else>Price/Piece</dt>
                   <dd>{{ formatCents(set.pricePerPiece) }}</dd>
                 </div>
                 <div>
-                  <dt>Brick size</dt>
+                  <dt v-if="isMobileLayout">Size</dt>
+                  <dt v-else>Brick Size</dt>
                   <dd>{{ set.brickSize }}</dd>
                 </div>
               </dl>
@@ -578,8 +582,8 @@
         >
           <img :src="image.url" :alt="image.fileName" />
           <div class="image-manager-item-info">
-            <span class="image-manager-item-date">{{ formatImageDate(image.createdAt) }}</span>
-            <span class="image-manager-item-source">{{ image.source }}</span>
+            <span v-if="!isMobileLayout" class="image-manager-item-date">{{ formatImageDate(image.createdAt) }}</span>
+            <span v-if="!isMobileLayout" class="image-manager-item-source">{{ image.source }}</span>
           </div>
           <div class="image-manager-item-actions">
             <div class="image-manager-sort-buttons">
@@ -682,12 +686,21 @@ const manufacturers = [
   'Wange',
   'Unknown'
 ];
+
+const MOBILE_BREAKPOINT = 768;
+const isMobileLayout = ref(
+  typeof window !== 'undefined' ? window.innerWidth <= MOBILE_BREAKPOINT : false
+);
+const updateIsMobileLayout = () => {
+  isMobileLayout.value = window.innerWidth <= MOBILE_BREAKPOINT;
+};
+
 type SortField = 'setName' | 'purchasePrice' | 'pieceCount' | 'pricePerPiece';
 const sortOptions: Array<{ key: SortField; label: string }> = [
   { key: 'setName', label: 'Name' },
   { key: 'purchasePrice', label: 'Price' },
   { key: 'pieceCount', label: 'Pieces' },
-  { key: 'pricePerPiece', label: 'Price per piece' }
+  { key: 'pricePerPiece', label: isMobileLayout.value ? 'ct/piece' : 'Price per piece' }
 ];
 
 const sets = ref<BrickSet[]>([]);
@@ -797,6 +810,7 @@ watch(imageViewerSetId, (newVal, oldVal) => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleViewerKeydown);
+  window.removeEventListener('resize', updateIsMobileLayout);
 });
 
 const ZOOM_SCALE = 2.5;
@@ -1491,6 +1505,9 @@ onMounted(async () => {
     applyDarkMode(window.matchMedia('(prefers-color-scheme: dark)').matches);
   }
 
+  window.addEventListener('resize', updateIsMobileLayout);
+  updateIsMobileLayout();
+
   loadSets();
   try {
     const res = await fetch('/api/version');
@@ -1504,6 +1521,7 @@ onMounted(async () => {
   --bg-page: linear-gradient(160deg, #e8ecf1 0%, #f0f2f5 40%, #eae4da 100%);
   --bg-card: rgba(255, 255, 255, 0.9);
   --bg-surface: #fff;
+  --bg-surface-rgba: rgba(255, 255, 255, 0.35);
   --bg-elevated: #f8fafc;
   --bg-inset: #f1f5f9;
   --bg-subtle: rgba(15, 23, 42, 0.06);
@@ -1572,6 +1590,7 @@ onMounted(async () => {
   --bg-page: linear-gradient(160deg, #0f172a 0%, #111d32 40%, #1a1525 100%);
   --bg-card: rgba(30, 41, 59, 0.95);
   --bg-surface: #1e293b;
+  --bg-surface-rgba: rgb(30, 41, 59, 0.35);
   --bg-elevated: #1e293b;
   --bg-inset: #0f172a;
   --bg-subtle: rgba(148, 163, 184, 0.1);
@@ -1964,12 +1983,6 @@ onMounted(async () => {
   transform: translateX(20px);
 }
 
-@media (max-width: 600px) {
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
 .list-card {
   position: relative;
 }
@@ -2078,6 +2091,13 @@ onMounted(async () => {
   cursor: pointer;
 }
 
+.filter-chips {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 .filter-chip span {
   pointer-events: none;
 }
@@ -2137,12 +2157,6 @@ onMounted(async () => {
   border: 1px solid var(--border-danger);
   background: var(--bg-danger-soft);
   transition: filter 0.2s ease;
-}
-
-@media (max-width: 800px) {
-  .controls-bar {
-    flex-direction: column;
-  }
 }
 
 .list-header__title {
@@ -2644,26 +2658,6 @@ onMounted(async () => {
   justify-content: flex-end;
 }
 
-@media (max-width: 640px) {
-  .set-grid {
-    display: grid;
-    gap: 1rem;
-    grid-template-columns: repeat(1, 1fr);
-  }
-  .set-card__layout {
-    grid-template-columns: 1fr;
-  }
-
-  .set-card__image-panel {
-    order: -1;
-    width: 100%;
-  }
-
-  .set-card__details {
-    margin-left: 0;
-  }
-}
-
 .set-card__header {
   display: flex;
   justify-content: space-between;
@@ -2980,4 +2974,59 @@ onMounted(async () => {
   border-radius: 999px;
   letter-spacing: 0.05em;
 }
+
+@media (max-width: 768px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .set-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(1, 1fr);
+  }
+  .set-card__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .set-card__image-panel {
+    order: -1;
+    width: 100%;
+  }
+
+  .set-card__details {
+    margin-left: 0;
+  }
+
+  .controls-bar {
+    flex-direction: column;
+  }
+
+  .set-card__image-controls {
+    opacity: 1;
+  }
+  .manage-images-gear {
+    opacity: 1;
+  }
+  .set-card__image-wrapper:hover .manage-images-gear {
+    opacity: 1;
+  }
+
+  .carousel-button {
+    background-color: var(--bg-surface-rgba);
+  }
+
+  .image-viewer-prev {
+    left: -1.2rem;
+  }
+  
+  .reset-chip {
+    margin-left: 0;
+  }
+}
+
 </style>
