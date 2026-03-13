@@ -3048,6 +3048,10 @@ onMounted(async () => {
   .image-viewer-prev {
     left: -1.2rem;
   }
+
+  .image-viewer-next {
+    left: -1.2rem;
+  }
   
   .reset-chip {
     margin-left: 0;
