@@ -191,7 +191,7 @@
                 </div>
                 <div>
                   <dt v-if="isMobileLayout">ct/piece</dt>
-                  <dt v-else>Price/Piece</dt>
+                  <dt v-else>Piece Price</dt>
                   <dd>{{ formatCents(set.pricePerPiece) }}</dd>
                 </div>
                 <div>
@@ -375,7 +375,10 @@
         </label>
         <label>
           Theme
-          <input v-model="form.theme" type="text" placeholder="Star Wars" />
+          <input v-model="form.theme" type="text" placeholder="Star Wars" list="theme-options" />
+          <datalist id="theme-options">
+            <option v-for="theme in activeThemes" :key="theme" :value="theme" />
+          </datalist>
         </label>
         <label>
           Year
@@ -1295,7 +1298,7 @@ const formatCents = (value: number | null) => {
     return '—';
   }
   const cents = value * 100;
-  return `${formatWithComma(cents, 3)} ct`;
+  return `${formatWithComma(cents, 2)} ct`;
 };
 
 const filters = reactive({
