@@ -679,12 +679,12 @@ const brickSizes = ['Diamond', 'Mini', 'Standard'];
 const manufacturers = [
   'CaDA',
   'DAGAO',
-  'Jiestar',
+  'JIE-STAR',
   'King',
   'LEGO',
   'Lezi',
-  'LOZ',
-  'Mega',
+  'Loz',
+  'MEGA',
   'MINISO',
   'Mork',
   'Mould King',
@@ -2232,17 +2232,7 @@ onMounted(async () => {
   grid-template-columns: repeat(1, 1fr);
 }
 
-@media (min-width: 768px) {
-  .set-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
 
-@media (min-width: 1750px) {
-  .set-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
 
 .set-card {
   padding: 1rem;
@@ -3003,6 +2993,18 @@ onMounted(async () => {
   letter-spacing: 0.05em;
 }
 
+@media (min-width: 768px) {
+  .set-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1750px) {
+  .set-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
   .form-grid {
     grid-template-columns: 1fr;
@@ -3053,7 +3055,7 @@ onMounted(async () => {
   }
 
   .image-viewer-next {
-    left: -1.2rem;
+    right: -1.2rem;
   }
   
   .reset-chip {
