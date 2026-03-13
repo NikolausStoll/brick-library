@@ -632,7 +632,7 @@
     </div>
   </div>
   <div class="app-footer">
-    <span v-if="appVersion" class="app-version">v{{ appVersion }}</span>
+    <span class="app-version">v{{ appVersion }}</span>
     <button type="button" class="dark-mode-toggle" @click="toggleDarkMode" :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'">
       {{ isDark ? '☀️' : '🌙' }}
     </button>
@@ -642,6 +642,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import configText from '../../brick-library/config.yaml?raw';
 
 type SetStatus = 'New' | 'Building' | 'Built' | 'Disassembled' | 'Sold';
 
@@ -1505,8 +1506,6 @@ const saveSet = async () => {
   }
 };
 
-const appVersion = ref('');
-
 const isDark = ref(false);
 const applyDarkMode = (dark: boolean) => {
   isDark.value = dark;
@@ -1530,11 +1529,10 @@ onMounted(async () => {
   updateIsMobileLayout();
 
   loadSets();
-  try {
-    const res = await fetch('/api/version');
-    if (res.ok) appVersion.value = (await res.json()).version;
-  } catch { /* ignore */ }
 });
+
+  const configVersionMatch = configText.match(/version:\s*["']([^"']+)["']/)
+  const appVersion = configVersionMatch?.[1] ?? 'unknown'
 </script>
 
 <style scoped>

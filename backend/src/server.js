@@ -312,19 +312,6 @@ const ensureSetExists = (req, res, next) => {
   next();
 };
 
-const APP_VERSION = (() => {
-  try {
-    const configPath = path.resolve(__dirname, '../../brick-library/config.yaml');
-    const content = fs.readFileSync(configPath, 'utf-8');
-    const match = content.match(/^version:\s*"?([^"\n]+)"?/m);
-    return match ? match[1] : 'unknown';
-  } catch { return 'unknown'; }
-})();
-
-app.get('/api/version', (_req, res) => {
-  res.json({ version: APP_VERSION });
-});
-
 app.get('/api/sets', (req, res) => {
   const rows = selectAllStmt.all();
   res.json(rows.map(mapRow));

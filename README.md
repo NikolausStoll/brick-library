@@ -63,7 +63,6 @@ brick-library/
 - `GET/POST /api/sets` – List sets, create set
 - `GET/PUT/DELETE /api/sets/:id` – Get, update, delete set
 - `PUT /api/sets/:id/move` – Move set between collection/wishlist (body: `listType`, optional `purchasePrice`)
-- `GET /api/version` – App version from config
 - `GET/POST/DELETE /api/sets/:setId/images` – List images, upload files
 - `POST /api/sets/:setId/images/url` – Add one image from URL (body: `imageUrl`)
 - `POST /api/sets/:setId/images/scrape` – Scrape images from pasted HTML (body: `rawHtml`, optional `baseUrl`)
