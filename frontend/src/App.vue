@@ -584,8 +584,10 @@
           <div class="image-manager-item-info">
             <span v-if="!isMobileLayout" class="image-manager-item-date">{{ formatImageDate(image.createdAt) }}</span>
             <span v-if="!isMobileLayout" class="image-manager-item-source">{{ image.source }}</span>
-            <span class="image-manager-item-meta">Image size: {{ formatImageDimensions(image) }}</span>
-            <span class="image-manager-item-meta">File size: {{ formatFileSize(image.fileSize) }}</span>
+            <span v-if="!isMobileLayout" class="image-manager-item-meta">Image size: {{ formatImageDimensions(image) }}</span>
+            <span v-else class="image-manager-item-meta">{{ formatImageDimensions(image) }}</span>
+            <span v-if="!isMobileLayout" class="image-manager-item-meta">File size: {{ formatFileSize(image.fileSize) }}</span>
+            <span v-else class="image-manager-item-meta">{{ formatFileSize(image.fileSize) }}</span>
           </div>
           <div class="image-manager-item-actions">
             <div class="image-manager-sort-buttons">
@@ -2343,7 +2345,6 @@ onMounted(async () => {
   height: 1em;
   font-size: 1.05rem;
   line-height: 1;
-  top: -1px;
   position: relative;
   left: 0.5px;
 }
