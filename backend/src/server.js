@@ -74,6 +74,59 @@ const optimizeImage = async (inputBuffer) => {
 
 const db = new Database(DB_PATH);
 
+const CREATE_SETS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS sets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    manufacturer TEXT NOT NULL,
+    setName TEXT NOT NULL,
+    setNumber TEXT,
+    legoReferenceNumber TEXT,
+    brickSize TEXT NOT NULL DEFAULT 'Standard',
+    purchasePrice INTEGER,
+    pieceCount INTEGER,
+    status TEXT NOT NULL DEFAULT 'New',
+    hasOriginalBox INTEGER NOT NULL DEFAULT 0,
+    boxedWith TEXT,
+    hasPrintedPhoto INTEGER NOT NULL DEFAULT 0,
+    notes TEXT,
+    instructionsUrl TEXT,
+    retiredProduct INTEGER,
+    theme TEXT,
+    year INTEGER,
+    listType TEXT NOT NULL DEFAULT 'collection',
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
+  )
+`;
+
+const CREATE_SET_IMAGES_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS set_images (
+    id TEXT PRIMARY KEY,
+    setId INTEGER NOT NULL,
+    fileName TEXT NOT NULL,
+    source TEXT NOT NULL,
+    originalUrl TEXT,
+    sortOrder INTEGER NOT NULL DEFAULT 0,
+    createdAt TEXT NOT NULL,
+    imageWidth INTEGER,
+    imageHeight INTEGER,
+    fileSize INTEGER,
+    FOREIGN KEY (setId) REFERENCES sets(id)
+  )
+`;
+
+const ensureSchema = () => {
+  db.exec(CREATE_SETS_TABLE_SQL);
+  db.exec(CREATE_SET_IMAGES_TABLE_SQL);
+  const setsTableInfo = db.prepare("PRAGMA table_info('sets')").all();
+  const hasListType = setsTableInfo.some((col) => col.name === 'listType');
+  if (!hasListType) {
+    db.exec("ALTER TABLE sets ADD COLUMN listType TEXT NOT NULL DEFAULT 'collection'");
+  }
+};
+
+ensureSchema();
+
 const BASE_COLUMNS = [
   'manufacturer',
   'setName',
