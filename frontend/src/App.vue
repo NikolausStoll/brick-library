@@ -1680,6 +1680,8 @@ onMounted(async () => {
   justify-content: center;
   box-shadow: var(--shadow-gear);
   transition: transform 0.2s;
+  color: inherit;
+  filter: grayscale(1) saturate(0);
 }
 
 .dark-mode-toggle:hover {
@@ -2189,7 +2191,19 @@ onMounted(async () => {
 .set-grid {
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(1, 1fr);
+}
+
+@media (min-width: 768px) {
+  .set-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1750px) {
+  .set-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 .set-card {

@@ -503,10 +503,10 @@ app.post('/api/sets/:setId/images/url', ensureSetExists, async (req, res) => {
     return res.status(400).json({ error: 'Invalid URL' });
   }
 
-  const cleanUrl = `${parsedUrl.origin}${parsedUrl.pathname}`;
+  const originalUrl = parsedUrl.href;
   const setId = Number(req.params.setId);
 
-  const existing = selectImageByOriginalUrlStmt.get(setId, cleanUrl);
+  const existing = selectImageByOriginalUrlStmt.get(setId, originalUrl);
   if (existing) {
     return res.status(409).json({ error: 'Image with this URL already exists for this set' });
   }
@@ -544,9 +544,9 @@ app.post('/api/sets/:setId/images/url', ensureSetExists, async (req, res) => {
   fs.writeFileSync(path.join(setDir, fileName), optimized.buffer);
 
   const sortOrder = maxOrder + 1;
-  insertImageStmt.run({ id, setId, fileName, source: 'url', originalUrl: cleanUrl, sortOrder, createdAt: now });
+  insertImageStmt.run({ id, setId, fileName, source: 'scrape', originalUrl, sortOrder, createdAt: now });
 
-  const image = serializeImageRow({ id, setId, fileName, source: 'url', originalUrl: cleanUrl, sortOrder, createdAt: now });
+  const image = serializeImageRow({ id, setId, fileName, source: 'scrape', originalUrl, sortOrder, createdAt: now });
   res.status(201).json(image);
 });
 
