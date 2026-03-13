@@ -584,6 +584,8 @@
           <div class="image-manager-item-info">
             <span v-if="!isMobileLayout" class="image-manager-item-date">{{ formatImageDate(image.createdAt) }}</span>
             <span v-if="!isMobileLayout" class="image-manager-item-source">{{ image.source }}</span>
+            <span class="image-manager-item-meta">Image size: {{ formatImageDimensions(image) }}</span>
+            <span class="image-manager-item-meta">File size: {{ formatFileSize(image.fileSize) }}</span>
           </div>
           <div class="image-manager-item-actions">
             <div class="image-manager-sort-buttons">
@@ -728,6 +730,9 @@ type SetImage = {
   sortOrder: number;
   createdAt: string;
   url: string;
+  imageWidth: number | null;
+  imageHeight: number | null;
+  fileSize: number | null;
 };
 
 const setImages = reactive<Record<string, SetImage[]>>({});
@@ -767,6 +772,22 @@ const formatImageDate = (value: string) =>
     month: 'short',
     year: 'numeric'
   });
+
+const formatImageDimensions = (image: SetImage) => {
+  if (image.imageWidth && image.imageHeight) {
+    return `${image.imageWidth}×${image.imageHeight}px`;
+  }
+  if (image.imageWidth || image.imageHeight) {
+    return `${image.imageWidth ?? '—'}×${image.imageHeight ?? '—'} px`;
+  }
+  return '—';
+};
+
+const formatFileSize = (value: number | null) => {
+  if (value == null) return '—';
+  const kb = value / 1024;
+  return `${kb.toFixed(1)} KB`;
+};
 
 const showNextImage = (setId: string) => {
   const images = getImagesForSet(setId);
@@ -2438,6 +2459,11 @@ onMounted(async () => {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
+}
+
+.image-manager-item-meta {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
 }
 
 .image-manager-item-actions {

@@ -33,21 +33,42 @@ const optimizeImage = async (inputBuffer) => {
   const image = sharp(inputBuffer);
   const metadata = await image.metadata();
 
-  if (metadata.format === 'svg') return { buffer: inputBuffer, ext: '.svg' };
-  if (metadata.format === 'gif') {
-    return { buffer: await image.gif().toBuffer(), ext: '.gif' };
+  if (metadata.format === 'svg') {
+    return {
+      buffer: inputBuffer,
+      ext: '.svg',
+      width: metadata.width ?? null,
+      height: metadata.height ?? null,
+      fileSize: inputBuffer.length
+    };
   }
+
+  if (metadata.format === 'gif') {
+    const { data, info } = await image.gif().toBuffer({ resolveWithObject: true });
+    return {
+      buffer: data,
+      ext: '.gif',
+      width: info.width ?? null,
+      height: info.height ?? null,
+      fileSize: info.size ?? data.length
+    };
+  }
+
+  const pipeline = image
+    .resize({
+      width: IMAGE_MAX_DIMENSION,
+      height: IMAGE_MAX_DIMENSION,
+      fit: 'inside',
+      withoutEnlargement: true
+    })
+    .webp({ quality: IMAGE_QUALITY });
+  const { data, info } = await pipeline.toBuffer({ resolveWithObject: true });
   return {
-    buffer: await image
-      .resize({
-        width: IMAGE_MAX_DIMENSION,
-        height: IMAGE_MAX_DIMENSION,
-        fit: 'inside',
-        withoutEnlargement: true
-      })
-      .webp({ quality: IMAGE_QUALITY })
-      .toBuffer(),
-    ext: '.webp'
+    buffer: data,
+    ext: '.webp',
+    width: info.width ?? null,
+    height: info.height ?? null,
+    fileSize: info.size ?? data.length
   };
 };
 
@@ -73,50 +94,12 @@ const BASE_COLUMNS = [
   'listType'
 ];
 
-const CREATE_SETS_TABLE_SQL = `
-  CREATE TABLE sets (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    manufacturer TEXT NOT NULL,
-    setName TEXT NOT NULL,
-    setNumber TEXT,
-    legoReferenceNumber TEXT,
-    brickSize TEXT NOT NULL DEFAULT 'Standard',
-    purchasePrice INTEGER,
-    pieceCount INTEGER,
-    status TEXT NOT NULL DEFAULT 'New',
-    hasOriginalBox INTEGER NOT NULL DEFAULT 0,
-    boxedWith TEXT,
-    hasPrintedPhoto INTEGER NOT NULL DEFAULT 0,
-    notes TEXT,
-    instructionsUrl TEXT,
-    retiredProduct INTEGER,
-    theme TEXT,
-    year INTEGER,
-    listType TEXT NOT NULL DEFAULT 'collection',
-    createdAt TEXT NOT NULL,
-    updatedAt TEXT NOT NULL
-  )
-`;
-
-const CREATE_SET_IMAGES_TABLE_SQL = `
-  CREATE TABLE set_images (
-    id TEXT PRIMARY KEY,
-    setId INTEGER NOT NULL,
-    fileName TEXT NOT NULL,
-    source TEXT NOT NULL CHECK (source IN ('upload', 'scrape')),
-    originalUrl TEXT,
-    sortOrder INTEGER NOT NULL DEFAULT 0,
-    createdAt TEXT NOT NULL,
-    FOREIGN KEY (setId) REFERENCES sets(id)
-  )
-`;
-
 const INSERT_SET_SQL = `INSERT INTO sets (${BASE_COLUMNS.join(', ')}, createdAt, updatedAt) VALUES (${BASE_COLUMNS.map(
   (column) => `@${column}`
 ).join(', ')}, @createdAt, @updatedAt)`;
 
 const INSERT_SET_IMAGE_SQL =
-  'INSERT INTO set_images (id, setId, fileName, source, originalUrl, sortOrder, createdAt) VALUES (@id, @setId, @fileName, @source, @originalUrl, @sortOrder, @createdAt)';
+  'INSERT INTO set_images (id, setId, fileName, source, originalUrl, sortOrder, createdAt, imageWidth, imageHeight, fileSize) VALUES (@id, @setId, @fileName, @source, @originalUrl, @sortOrder, @createdAt, @imageWidth, @imageHeight, @fileSize)';
 
 const app = express();
 app.use(express.json());
@@ -244,24 +227,6 @@ const findImageForSet = (setId, imageId) => {
   const image = selectImageByIdStmt.get(imageId);
   return image && image.setId === numericSetId ? image : null;
 };
-
-const ensureSchema = () => {
-  const setsTableInfo = db.prepare("PRAGMA table_info('sets')").all();
-  if (setsTableInfo.length === 0) {
-    db.exec(CREATE_SETS_TABLE_SQL);
-  } else {
-    const hasListType = setsTableInfo.some((col) => col.name === 'listType');
-    if (!hasListType) {
-      db.exec("ALTER TABLE sets ADD COLUMN listType TEXT NOT NULL DEFAULT 'collection'");
-    }
-  }
-  const setImagesTableInfo = db.prepare("PRAGMA table_info('set_images')").all();
-  if (setImagesTableInfo.length === 0) {
-    db.exec(CREATE_SET_IMAGES_TABLE_SQL);
-  }
-};
-
-ensureSchema();
 
 const insertImageStmt = db.prepare(INSERT_SET_IMAGE_SQL);
 const selectImagesBySetIdStmt = db.prepare(
@@ -395,15 +360,27 @@ app.post(
       const file = files[i];
       try {
         const inputBuffer = fs.readFileSync(file.path);
-        const { buffer, ext } = await optimizeImage(inputBuffer);
+        const { buffer, ext, width, height, fileSize } = await optimizeImage(inputBuffer);
         const id = randomUUID();
         const fileName = `${id}${ext}`;
         const optimizedPath = path.join(path.dirname(file.path), fileName);
         fs.writeFileSync(optimizedPath, buffer);
         if (optimizedPath !== file.path) fs.unlinkSync(file.path);
         const sortOrder = maxOrder + 1 + i;
-        insertImageStmt.run({ id, setId, fileName, source: 'upload', originalUrl: null, sortOrder, createdAt: now });
-        created.push(serializeImageRow({ id, setId, fileName, source: 'upload', originalUrl: null, sortOrder, createdAt: now }));
+        const row = {
+          id,
+          setId,
+          fileName,
+          source: 'upload',
+          originalUrl: null,
+          sortOrder,
+          createdAt: now,
+          imageWidth: width,
+          imageHeight: height,
+          fileSize
+        };
+        insertImageStmt.run(row);
+        created.push(serializeImageRow(row));
       } catch (error) {
         console.error('Failed to optimize uploaded image', error);
       }
@@ -544,9 +521,21 @@ app.post('/api/sets/:setId/images/url', ensureSetExists, async (req, res) => {
   fs.writeFileSync(path.join(setDir, fileName), optimized.buffer);
 
   const sortOrder = maxOrder + 1;
-  insertImageStmt.run({ id, setId, fileName, source: 'scrape', originalUrl, sortOrder, createdAt: now });
+  const row = {
+    id,
+    setId,
+    fileName,
+    source: 'scrape',
+    originalUrl,
+    sortOrder,
+    createdAt: now,
+    imageWidth: optimized.width,
+    imageHeight: optimized.height,
+    fileSize: optimized.fileSize
+  };
+  insertImageStmt.run(row);
 
-  const image = serializeImageRow({ id, setId, fileName, source: 'scrape', originalUrl, sortOrder, createdAt: now });
+  const image = serializeImageRow(row);
   res.status(201).json(image);
 });
 
@@ -696,8 +685,20 @@ app.post('/api/sets/:setId/images/scrape', ensureSetExists, async (req, res) => 
     fs.writeFileSync(filePath, optimized.buffer);
 
     const sortOrder = nextOrder++;
-    insertImageStmt.run({ id, setId, fileName, source: 'scrape', originalUrl: imageUrl, sortOrder, createdAt: now });
-    created.push(serializeImageRow({ id, setId, fileName, source: 'scrape', originalUrl: imageUrl, sortOrder, createdAt: now }));
+    const row = {
+      id,
+      setId,
+      fileName,
+      source: 'scrape',
+      originalUrl: imageUrl,
+      sortOrder,
+      createdAt: now,
+      imageWidth: optimized.width,
+      imageHeight: optimized.height,
+      fileSize: optimized.fileSize
+    };
+    insertImageStmt.run(row);
+    created.push(serializeImageRow(row));
   }
 
   res.status(201).json({
