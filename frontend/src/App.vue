@@ -106,9 +106,7 @@
       </dl>
     </section>
     <section class="card list-card">
-      <div class="list-header">
-        <button type="button" class="add-button" @click="openAddForm" aria-label="Add set">+</button>
-      </div>
+      <button type="button" class="add-button" @click="openAddForm" aria-label="Add set">+</button>
       <div v-if="filteredSets.length === 0" class="empty">
         {{ activeSets.length === 0
           ? (activeTab === 'wishlist' ? 'No wishlist items yet.' : 'No sets yet. Add one to start tracking your library.')
@@ -271,11 +269,13 @@
       <div v-if="isEditing && editingSet?.listType !== 'wishlist'" class="form-tabs">
         <button
           type="button"
+          class="tab-button"
           :class="{ active: editTab === 'general' }"
           @click="editTab = 'general'"
         >General</button>
         <button
           type="button"
+          class="tab-button"
           :class="{ active: editTab === 'details' }"
           @click="editTab = 'details'"
         >Details</button>
@@ -1728,7 +1728,7 @@ onMounted(async () => {
 .form-actions-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
+  gap: 0.75rem 1rem;
 }
 
 .content-grid {
@@ -1743,12 +1743,11 @@ onMounted(async () => {
   box-shadow: var(--shadow-card);
 }
 
-.form-card button:not(.delete-set-button) {
+.form-card button:not(.delete-set-button) button:not(.icon-button) {
   width: 100%;
   padding: 0.5rem;
   margin-top: 0.5rem;
-  border: 1px solid var(--border-default);
-  border-radius: 0.6rem;
+  border-bottom: 1px solid var(--border-default);
   background: var(--bg-surface);
   color: var(--text-primary);
   font-size: 0.8rem;
@@ -1756,7 +1755,7 @@ onMounted(async () => {
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.form-card button:not(.delete-set-button):hover {
+.form-card button:not(.delete-set-button):hover button:not(.tab-button):hover {
   background: var(--accent);
   color: var(--accent-text);
   border-color: var(--accent);
@@ -1850,7 +1849,7 @@ onMounted(async () => {
 .form-card input,
 .form-card select {
   width: 100%;
-  padding: 0.65rem;
+  padding: 0.5rem 0.65rem;
   margin-top: 0.15rem;
   border-radius: 0.65rem;
   border: 1px solid var(--border-input);
@@ -1969,14 +1968,14 @@ onMounted(async () => {
   }
 }
 
-.list-header {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  margin-bottom: 1rem;
+.list-card {
+  position: relative;
 }
 
 .add-button {
+  position: absolute;
+  top: -10px;
+  right: -10px;
   width: 2.2rem;
   height: 2.2rem;
   border-radius: 50%;
@@ -1987,6 +1986,7 @@ onMounted(async () => {
   line-height: 1;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
+  z-index: 10;
 }
 
 .add-button:hover {
@@ -2168,12 +2168,22 @@ onMounted(async () => {
   padding: 0.65rem 1.25rem;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
+
 }
 
-.primary-button:hover {
+.form-card button.primary-button {
+  margin-top: 1rem;
+}
+
+.form-card button.primary-button:hover,
+.upload-panel button.primary-button:hover {
   background: var(--accent);
   color: var(--accent-text);
   border-color: var(--accent);
+}
+
+.form-card button.delete-set-button {
+  margin-top: 1rem;
 }
 
 .set-grid {
@@ -2265,7 +2275,7 @@ onMounted(async () => {
   height: 2rem;
   padding: 0;
   border-radius: 50%;
-  border: none;
+  border: 1px solid transparent;
   background: var(--bg-surface);
   box-shadow: var(--shadow-gear);
   cursor: pointer;
@@ -2274,7 +2284,7 @@ onMounted(async () => {
   justify-content: center;
   color: var(--text-secondary);
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.2s ease, border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
   z-index: 2;
 }
 
@@ -2286,16 +2296,15 @@ onMounted(async () => {
   height: 1em;
   font-size: 1.05rem;
   line-height: 1;
-  transition: transform 0.2s ease;
-  transform-origin: 50% 50%;
-}
-
-.manage-images-gear:hover .manage-images-gear__icon {
-  transform: rotate(45deg);
+  top: -1px;
+  position: relative;
+  left: 0.5px;
 }
 
 .manage-images-gear:hover {
-  background: var(--bg-surface);
+  border-color: #fb923c;
+  background: rgba(251, 146, 60, 0.15);
+  color: #fb923c;
 }
 
 .set-card__image-wrapper:hover .manage-images-gear {
@@ -2493,7 +2502,7 @@ onMounted(async () => {
 
 .upload-tabs {
   display: flex;
-  gap: 0;
+  gap: 0.25rem;
   border-bottom: 1px solid var(--border-default);
   margin-bottom: 0.75rem;
 }
@@ -2833,11 +2842,6 @@ onMounted(async () => {
   align-items: center;
 }
 
-.overlay-header__actions > .icon-button {
-  width: 2.5rem;
-  padding: 0;
-}
-
 .move-icon-button {
   color: var(--status-built-text) !important;
   font-size: 1.2rem;
@@ -2862,6 +2866,12 @@ onMounted(async () => {
   font-size: 1.4rem;
   line-height: 1;
   cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+
+.icon-button:hover {
+  background: var(--bg-inset);
+  border-color: var(--border-medium);
 }
 
 .image-viewer-overlay {
@@ -2940,9 +2950,8 @@ onMounted(async () => {
 
 .image-viewer-close {
   position: absolute;
-  top: 5px;
-  right: 5px;
-  background: var(--bg-surface);
+  top: 0.5rem;
+  right: 0.5rem;
 }
 
 .image-viewer-counter {
