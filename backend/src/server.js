@@ -69,7 +69,8 @@ const BASE_COLUMNS = [
   'instructionsUrl',
   'retiredProduct',
   'theme',
-  'year'
+  'year',
+  'listType'
 ];
 
 const CREATE_SETS_TABLE_SQL = `
@@ -91,6 +92,7 @@ const CREATE_SETS_TABLE_SQL = `
     retiredProduct INTEGER,
     theme TEXT,
     year INTEGER,
+    listType TEXT NOT NULL DEFAULT 'collection',
     createdAt TEXT NOT NULL,
     updatedAt TEXT NOT NULL
   )
@@ -194,6 +196,7 @@ const preparePayload = (raw) => {
     retiredProduct: sanitizeNullableBoolean(raw.retiredProduct),
     theme: raw.theme?.trim() || null,
     year: raw.year != null ? Number(raw.year) : null,
+    listType: raw.listType === 'wishlist' ? 'wishlist' : 'collection',
     createdAt: raw.createdAt || now,
     updatedAt: now
   };
@@ -225,6 +228,7 @@ const mapRow = (row) => {
     retiredProduct: row.retiredProduct === null ? null : Boolean(row.retiredProduct),
     theme: row.theme,
     year: row.year,
+    listType: row.listType ?? 'collection',
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   };
@@ -245,6 +249,11 @@ const ensureSchema = () => {
   const setsTableInfo = db.prepare("PRAGMA table_info('sets')").all();
   if (setsTableInfo.length === 0) {
     db.exec(CREATE_SETS_TABLE_SQL);
+  } else {
+    const hasListType = setsTableInfo.some((col) => col.name === 'listType');
+    if (!hasListType) {
+      db.exec("ALTER TABLE sets ADD COLUMN listType TEXT NOT NULL DEFAULT 'collection'");
+    }
   }
   const setImagesTableInfo = db.prepare("PRAGMA table_info('set_images')").all();
   if (setImagesTableInfo.length === 0) {
@@ -326,7 +335,8 @@ app.put('/api/sets/:id', (req, res) => {
   if (!current) {
     return res.status(404).json({ error: 'Set not found' });
   }
-  const payload = preparePayload({ ...current, ...req.body, createdAt: current.createdAt });
+  const apiFormat = mapRow(current);
+  const payload = preparePayload({ ...apiFormat, ...req.body, createdAt: current.createdAt });
   updateSetStmt.run({ id: req.params.id, ...payload });
   const updated = selectByIdStmt.get(req.params.id);
   res.json(mapRow(updated));
@@ -346,6 +356,26 @@ app.delete('/api/sets/:id', (req, res) => {
   const setDir = path.join(UPLOAD_DIR, String(setId));
   try { fs.rmdirSync(setDir); } catch { /* dir may be gone or not empty */ }
   res.status(204).send();
+});
+
+app.put('/api/sets/:id/move', (req, res) => {
+  const current = selectByIdStmt.get(req.params.id);
+  if (!current) {
+    return res.status(404).json({ error: 'Set not found' });
+  }
+  const { listType, purchasePrice } = req.body;
+  if (!listType || !['collection', 'wishlist'].includes(listType)) {
+    return res.status(400).json({ error: 'listType must be collection or wishlist' });
+  }
+  const apiFormat = mapRow(current);
+  const updates = { ...apiFormat, listType, createdAt: current.createdAt };
+  if (purchasePrice !== undefined) {
+    updates.purchasePrice = purchasePrice;
+  }
+  const payload = preparePayload(updates);
+  updateSetStmt.run({ id: req.params.id, ...payload });
+  const updated = selectByIdStmt.get(req.params.id);
+  res.json(mapRow(updated));
 });
 
 app.post(
@@ -458,6 +488,66 @@ app.put('/api/sets/:setId/images/order', ensureSetExists, (req, res) => {
   updateMany(imageIds);
   const rows = selectImagesBySetIdStmt.all(setId);
   res.json(rows.map(serializeImageRow));
+});
+
+app.post('/api/sets/:setId/images/url', ensureSetExists, async (req, res) => {
+  const { imageUrl } = req.body;
+  if (!imageUrl) {
+    return res.status(400).json({ error: 'imageUrl is required' });
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(imageUrl);
+  } catch {
+    return res.status(400).json({ error: 'Invalid URL' });
+  }
+
+  const cleanUrl = `${parsedUrl.origin}${parsedUrl.pathname}`;
+  const setId = Number(req.params.setId);
+
+  const existing = selectImageByOriginalUrlStmt.get(setId, cleanUrl);
+  if (existing) {
+    return res.status(409).json({ error: 'Image with this URL already exists for this set' });
+  }
+
+  let rawBuffer;
+  try {
+    const imgResponse = await fetch(parsedUrl.href, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'image/*,*/*;q=0.8'
+      }
+    });
+    if (!imgResponse.ok) {
+      return res.status(502).json({ error: `Failed to fetch image: HTTP ${imgResponse.status}` });
+    }
+    rawBuffer = Buffer.from(await imgResponse.arrayBuffer());
+  } catch (error) {
+    return res.status(502).json({ error: `Failed to fetch image: ${error.message}` });
+  }
+
+  let optimized;
+  try {
+    optimized = await optimizeImage(rawBuffer);
+  } catch (error) {
+    return res.status(422).json({ error: `Failed to process image: ${error.message}` });
+  }
+
+  const setDir = path.join(UPLOAD_DIR, String(setId));
+  fs.mkdirSync(setDir, { recursive: true });
+
+  const { maxOrder } = selectMaxSortOrderStmt.get(setId);
+  const now = new Date().toISOString();
+  const id = randomUUID();
+  const fileName = `${id}${optimized.ext}`;
+  fs.writeFileSync(path.join(setDir, fileName), optimized.buffer);
+
+  const sortOrder = maxOrder + 1;
+  insertImageStmt.run({ id, setId, fileName, source: 'url', originalUrl: cleanUrl, sortOrder, createdAt: now });
+
+  const image = serializeImageRow({ id, setId, fileName, source: 'url', originalUrl: cleanUrl, sortOrder, createdAt: now });
+  res.status(201).json(image);
 });
 
 app.post('/api/sets/:setId/images/scrape', ensureSetExists, async (req, res) => {

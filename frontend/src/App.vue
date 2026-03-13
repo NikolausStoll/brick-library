@@ -1,6 +1,18 @@
 <template>
   <main class="page">
   <section class="content-grid">
+    <nav class="page-tabs">
+      <button
+        type="button"
+        :class="{ active: activeTab === 'collection' }"
+        @click="activeTab = 'collection'"
+      >Collection</button>
+      <button
+        type="button"
+        :class="{ active: activeTab === 'wishlist' }"
+        @click="activeTab = 'wishlist'"
+      >Wishlist</button>
+    </nav>
     <section class="card controls-card">
       <div class="controls-bar">
         <div class="chip-group">
@@ -95,15 +107,12 @@
     </section>
     <section class="card list-card">
       <div class="list-header">
-          <div class="list-header__title">
-            <h2>Collection</h2>
-          </div>
-        <button type="button" class="primary-button" @click="openAddForm">
-          Add a set
-        </button>
+        <button type="button" class="add-button" @click="openAddForm" aria-label="Add set">+</button>
       </div>
       <div v-if="filteredSets.length === 0" class="empty">
-        {{ sets.length === 0 ? 'No sets yet. Add one to start tracking your library.' : 'No sets match the active filters.' }}
+        {{ activeSets.length === 0
+          ? (activeTab === 'wishlist' ? 'No wishlist items yet.' : 'No sets yet. Add one to start tracking your library.')
+          : 'No sets match the active filters.' }}
       </div>
       <div v-else class="set-grid">
         <article
@@ -146,7 +155,7 @@
                   aria-label="Manage images"
                   @click.stop="openImageManager(set.id)"
                 >
-                  &#9881;
+                  <span class="manage-images-gear__icon">&#9881;</span>
                 </button>
               </div>
               <div v-else class="set-card__image-empty">
@@ -157,7 +166,7 @@
                   aria-label="Manage images"
                   @click.stop="openImageManager(set.id)"
                 >
-                  &#9881;
+                  <span class="manage-images-gear__icon">&#9881;</span>
                 </button>
               </div>
             </div>
@@ -165,7 +174,7 @@
             <div class="set-card__details">
               <div class="set-card__header">
                 <p class="set-card__manufacturer">{{ set.manufacturer }}</p>
-                <p class="set-card__status" :data-status="set.status">{{ set.status }}</p>
+                <p class="set-card__status" :data-status="set.status" @click.stop="cycleSetStatus(set)">{{ set.status }}</p>
               </div>
               <p class="set-card__name">{{ set.setName }}<span v-if="set.year" class="set-card__year">({{ set.year }})</span></p>
           <p class="set-card__number" v-if="set.setNumber || set.legoReferenceNumber">
@@ -173,7 +182,7 @@
           </p>
               <dl class="set-card__meta">
                 <div>
-                  <dt>Price</dt>
+                  <dt>{{ set.listType === 'wishlist' ? 'Target Price' : 'Price' }}</dt>
                   <dd>{{ formatPrice(set.purchasePrice) }}</dd>
                 </div>
                 <div>
@@ -181,7 +190,7 @@
                   <dd>{{ set.pieceCount ?? '—' }}</dd>
                 </div>
                 <div>
-                  <dt>Piece Price</dt>
+                  <dt>Price/Piece</dt>
                   <dd>{{ formatCents(set.pricePerPiece) }}</dd>
                 </div>
                 <div>
@@ -239,17 +248,27 @@
   >
     <form class="card form-card overlay-card" @submit.prevent="saveSet">
       <div class="overlay-header">
-        <h2>{{ isEditing ? 'Edit set' : 'Add a set' }}</h2>
-        <button
-          type="button"
-          class="icon-button"
-          aria-label="Close form"
-          @click="closeFormOverlay"
-        >
-          &times;
-        </button>
+        <h2>{{ isEditing ? 'Edit set' : activeTab === 'wishlist' ? 'Add to wishlist' : 'Add a set' }}</h2>
+        <div class="overlay-header__actions">
+          <button
+            v-if="isEditing && editingSet?.listType === 'wishlist'"
+            type="button"
+            class="icon-button move-icon-button"
+            aria-label="Move to Collection"
+            title="Move to Collection"
+            @click="openMoveOverlay"
+          >&#10132;</button>
+          <button
+            type="button"
+            class="icon-button"
+            aria-label="Close form"
+            @click="closeFormOverlay"
+          >
+            &times;
+          </button>
+        </div>
       </div>
-      <div v-if="isEditing" class="form-tabs">
+      <div v-if="isEditing && editingSet?.listType !== 'wishlist'" class="form-tabs">
         <button
           type="button"
           :class="{ active: editTab === 'general' }"
@@ -303,7 +322,7 @@
             </option>
           </select>
         </label>
-        <label>
+        <label v-if="activeTab === 'collection' && !isEditing || isEditing && editingSet?.listType !== 'wishlist'">
           Purchase price (EUR)
           <input
             v-model="form.purchasePrice"
@@ -317,8 +336,18 @@
           Piece count
           <input v-model="form.pieceCount" type="number" min="0" placeholder="7541" />
         </label>
+        <label v-if="activeTab === 'wishlist' || (isEditing && editingSet?.listType === 'wishlist')">
+          Price per piece (EUR)
+          <input
+            v-model="form.pricePerPiece"
+            type="text"
+            inputmode="decimal"
+            placeholder="0,05"
+            @input="handleDecimalInput('pricePerPiece', ($event.target as HTMLInputElement).value)"
+          />
+        </label>
       </div>
-      <div v-if="isEditing" v-show="editTab === 'details'" class="form-grid">
+      <div v-if="isEditing && editingSet?.listType !== 'wishlist'" v-show="editTab === 'details'" class="form-grid">
         <label class="toggle-label">
           Has original box
           <label class="toggle-switch">
@@ -357,18 +386,50 @@
           <textarea v-model="form.notes" rows="3" placeholder="Any additional notes…"></textarea>
         </label>
       </div>
-      <button type="submit" :disabled="submitting">{{ isEditing ? 'Update set' : 'Save set' }}</button>
-      <button
-        v-if="isEditing"
-        type="button"
-        class="delete-set-button"
-        :class="{ confirming: deleteSetConfirming }"
-        :disabled="deletingSet"
-        @click="deleteSet(editingId!)"
-      >
-        {{ deletingSet ? 'Deleting…' : deleteSetConfirming ? 'Are you sure?' : 'Delete set' }}
-      </button>
+      <div v-if="isEditing" class="form-actions-row">
+        <button type="submit" class="primary-button" :disabled="submitting">Update set</button>
+        <button
+          type="button"
+          class="delete-set-button"
+          :class="{ confirming: deleteSetConfirming }"
+          :disabled="deletingSet"
+          @click="deleteSet(editingId!)"
+        >
+          {{ deletingSet ? 'Deleting…' : deleteSetConfirming ? 'Are you sure?' : 'Delete set' }}
+        </button>
+      </div>
+      <button v-if="!isEditing" type="submit" class="primary-button" :disabled="submitting">Save set</button>
     </form>
+  </div>
+  <div
+    v-if="moveOverlayVisible"
+    class="overlay"
+    role="dialog"
+    aria-modal="true"
+    @click.self="moveOverlayVisible = false"
+    @keydown.esc="moveOverlayVisible = false"
+    tabindex="-1"
+  >
+    <div class="card overlay-card">
+      <div class="overlay-header">
+        <h2>Move to Collection</h2>
+        <button type="button" class="icon-button" aria-label="Close" @click="moveOverlayVisible = false">&times;</button>
+      </div>
+      <p class="move-hint">Enter the actual purchase price. Leave empty to keep the calculated wishlist price.</p>
+      <label class="move-price-label">
+        Purchase price (EUR)
+        <input
+          v-model="movePurchasePrice"
+          type="text"
+          inputmode="decimal"
+          placeholder="199,99"
+          @input="movePurchasePrice = formatDecimalInputValue(($event.target as HTMLInputElement).value)"
+        />
+      </label>
+      <button type="button" class="primary-button move-confirm-button" :disabled="movingSet" @click="moveToCollection">
+        {{ movingSet ? 'Moving…' : 'Confirm' }}
+      </button>
+    </div>
   </div>
   <div
     v-if="imageViewerSetId !== null"
@@ -443,7 +504,13 @@
         </button>
       </div>
 
-      <form class="image-upload-form" @submit.prevent="uploadImages(imageManagerSetId!)">
+      <div class="upload-tabs">
+        <button type="button" :class="{ active: uploadMode === 'file' }" @click="uploadMode = 'file'">File</button>
+        <button type="button" :class="{ active: uploadMode === 'url' }" @click="uploadMode = 'url'">URL</button>
+        <button type="button" :class="{ active: uploadMode === 'html' }" @click="uploadMode = 'html'">HTML</button>
+      </div>
+
+      <form v-if="uploadMode === 'file'" class="upload-panel" @submit.prevent="uploadImages(imageManagerSetId!)">
         <label class="image-upload-input">
           <span>{{ getSelectedFileName(imageManagerSetId!) }}</span>
           <input
@@ -463,82 +530,45 @@
         </button>
       </form>
 
-      <details class="scrape-section">
-        <summary class="scrape-toggle">Scrape images</summary>
-        <form class="scrape-form" @submit.prevent="scrapeImages(imageManagerSetId!)">
-          <div class="scrape-mode-tabs">
-            <button
-              type="button"
-              class="scrape-mode-tab"
-              :class="{ active: scrapeMode === 'html' }"
-              @click="scrapeMode = 'html'"
-            >
-              Paste HTML
-            </button>
-            <button
-              type="button"
-              class="scrape-mode-tab"
-              :class="{ active: scrapeMode === 'url' }"
-              @click="scrapeMode = 'url'"
-            >
-              Fetch URL
-            </button>
-          </div>
+      <form v-else-if="uploadMode === 'url'" class="upload-panel" @submit.prevent="uploadImageFromUrl(imageManagerSetId!)">
+        <input
+          v-model="imageUrlInput"
+          type="url"
+          placeholder="https://example.com/image.jpg"
+          required
+        />
+        <button type="submit" class="primary-button" :disabled="imageUrlUploading">
+          {{ imageUrlUploading ? 'Downloading…' : 'Download' }}
+        </button>
+        <div v-if="imageUrlError" class="upload-error">{{ imageUrlError }}</div>
+      </form>
 
-          <template v-if="scrapeMode === 'html'">
-            <label>
-              HTML containing &lt;img&gt; tags
-              <textarea
-                v-model="scrapeForm.rawHtml"
-                rows="5"
-                placeholder='<div class="gallery">&#10;  <img src="https://..." />&#10;  <img src="https://..." />&#10;</div>'
-                required
-              ></textarea>
-            </label>
-            <label>
-              Base URL <span class="label-hint">(optional, for relative src)</span>
-              <input
-                v-model="scrapeForm.baseUrl"
-                type="url"
-                placeholder="https://example.com"
-              />
-            </label>
-          </template>
-
-          <template v-else>
-            <label>
-              Page URL
-              <input
-                v-model="scrapeForm.pageUrl"
-                type="url"
-                placeholder="https://example.com/product-page"
-                required
-              />
-            </label>
-            <label>
-              Container CSS selector
-              <input
-                v-model="scrapeForm.containerSelector"
-                type="text"
-                placeholder=".gallery-container"
-                required
-              />
-            </label>
-          </template>
-
-          <button
-            type="submit"
-            class="primary-button"
-            :disabled="scrapeLoading"
-          >
-            {{ scrapeLoading ? 'Scraping…' : 'Scrape' }}
-          </button>
-          <div v-if="scrapeResult" class="scrape-result">
-            Found {{ scrapeResult.found }}, downloaded {{ scrapeResult.downloaded }}, skipped {{ scrapeResult.skipped }}
-          </div>
-          <div v-if="scrapeError" class="scrape-error">{{ scrapeError }}</div>
-        </form>
-      </details>
+      <form v-else class="upload-panel" @submit.prevent="scrapeImages(imageManagerSetId!)">
+        <label>
+          HTML containing &lt;img&gt; tags
+          <textarea
+            v-model="scrapeForm.rawHtml"
+            rows="4"
+            placeholder='<div class="gallery">&#10;  <img src="https://..." />&#10;</div>'
+            required
+          ></textarea>
+        </label>
+        <label>
+          Base URL <span class="label-hint">(optional, for relative src)</span>
+          <input
+            v-model="scrapeForm.baseUrl"
+            type="url"
+            placeholder="https://example.com"
+          />
+        </label>
+        <button type="submit" class="primary-button" :disabled="scrapeLoading">
+          {{ scrapeLoading ? 'Scraping…' : 'Scrape' }}
+        </button>
+        <div v-if="scrapeResult" class="upload-success">
+          Found {{ scrapeResult.found }}, downloaded {{ scrapeResult.downloaded }}, skipped {{ scrapeResult.skipped }}
+        </div>
+        <div v-if="scrapeError" class="upload-error">{{ scrapeError }}</div>
+      </form>
 
       <div v-if="getImagesForSet(imageManagerSetId!).length" class="image-manager-list">
         <div
@@ -627,7 +657,10 @@ type BrickSet = {
   instructionsUrl: string | null;
   retiredProduct: boolean | null;
   theme: string | null;
+  listType: 'collection' | 'wishlist';
 };
+
+type ListType = 'collection' | 'wishlist';
 
 const statuses: SetStatus[] = ['New', 'Building', 'Built', 'Disassembled', 'Sold'];
 const brickSizes = ['Diamond', 'Mini', 'Standard'];
@@ -658,11 +691,16 @@ const sortOptions: Array<{ key: SortField; label: string }> = [
 ];
 
 const sets = ref<BrickSet[]>([]);
+const activeTab = ref<ListType>('collection');
+
+const activeSets = computed(() =>
+  sets.value.filter((s) => s.listType === activeTab.value)
+);
 const activeManufacturers = computed(() =>
-  [...new Set(sets.value.map((s) => s.manufacturer))].sort()
+  [...new Set(activeSets.value.map((s) => s.manufacturer))].sort()
 );
 const activeThemes = computed(() =>
-  [...new Set(sets.value.map((s) => s.theme).filter(Boolean))].sort() as string[]
+  [...new Set(activeSets.value.map((s) => s.theme).filter(Boolean))].sort() as string[]
 );
 const submitting = ref(false);
 const isFormOverlayVisible = ref(false);
@@ -849,6 +887,8 @@ const showPreviousViewerImage = () => {
 
 const openImageManager = (setId: string) => {
   imageManagerSetId.value = setId;
+  imageUrlInput.value = '';
+  imageUrlError.value = null;
   scrapeResult.value = null;
   scrapeError.value = null;
 };
@@ -856,20 +896,46 @@ const closeImageManager = () => {
   imageManagerSetId.value = null;
 };
 
-const scrapeMode = ref<'html' | 'url'>('html');
-const scrapeForm = reactive({ pageUrl: '', containerSelector: '', rawHtml: '', baseUrl: '' });
+const uploadMode = ref<'file' | 'url' | 'html'>('file');
+const scrapeForm = reactive({ rawHtml: '', baseUrl: '' });
 const scrapeLoading = ref(false);
 const scrapeResult = ref<{ found: number; downloaded: number; skipped: number } | null>(null);
 const scrapeError = ref<string | null>(null);
+
+const imageUrlInput = ref('');
+const imageUrlUploading = ref(false);
+const imageUrlError = ref<string | null>(null);
+
+const uploadImageFromUrl = async (setId: string) => {
+  imageUrlError.value = null;
+  imageUrlUploading.value = true;
+  try {
+    const response = await fetch(`/api/sets/${setId}/images/url`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageUrl: imageUrlInput.value })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      imageUrlError.value = data.error || 'Upload failed';
+      return;
+    }
+    imageUrlInput.value = '';
+    await fetchSetImages(setId);
+  } catch (error) {
+    imageUrlError.value = 'Network error';
+    console.error('URL upload failed', error);
+  } finally {
+    imageUrlUploading.value = false;
+  }
+};
 
 const scrapeImages = async (setId: string) => {
   scrapeResult.value = null;
   scrapeError.value = null;
   scrapeLoading.value = true;
   try {
-    const payload = scrapeMode.value === 'html'
-      ? { rawHtml: scrapeForm.rawHtml, baseUrl: scrapeForm.baseUrl || undefined }
-      : { pageUrl: scrapeForm.pageUrl, containerSelector: scrapeForm.containerSelector };
+    const payload = { rawHtml: scrapeForm.rawHtml, baseUrl: scrapeForm.baseUrl || undefined };
     const response = await fetch(`/api/sets/${setId}/images/scrape`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1010,6 +1076,61 @@ const deleteSet = async (setId: string) => {
   }
 };
 
+const editingSet = computed(() =>
+  editingId.value ? sets.value.find((s) => s.id === editingId.value) ?? null : null
+);
+const moveOverlayVisible = ref(false);
+const movePurchasePrice = ref('');
+const movingSet = ref(false);
+
+const openMoveOverlay = () => {
+  const set = editingSet.value;
+  movePurchasePrice.value = set?.purchasePrice != null ? formatWithComma(set.purchasePrice, 2) : '';
+  moveOverlayVisible.value = true;
+};
+
+const moveToCollection = async () => {
+  if (!editingId.value) return;
+  movingSet.value = true;
+  try {
+    const body: Record<string, unknown> = { listType: 'collection' };
+    if (movePurchasePrice.value !== '') {
+      body.purchasePrice = parseDecimalString(movePurchasePrice.value);
+    }
+    const response = await fetch(`/api/sets/${editingId.value}/move`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!response.ok) throw new Error('Failed to move set');
+    moveOverlayVisible.value = false;
+    closeFormOverlay();
+    await loadSets();
+  } catch (error) {
+    console.error('Failed to move set', error);
+  } finally {
+    movingSet.value = false;
+  }
+};
+
+const cycleSetStatus = async (set: BrickSet) => {
+  const idx = statuses.indexOf(set.status);
+  const nextStatus = statuses[(idx + 1) % statuses.length];
+  try {
+    const response = await fetch(`/api/sets/${set.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: nextStatus })
+    });
+    if (!response.ok) throw new Error('Failed to update status');
+    const updated = await response.json();
+    const i = sets.value.findIndex((s) => s.id === set.id);
+    if (i !== -1) sets.value[i] = updated;
+  } catch (error) {
+    console.error('Failed to cycle status', error);
+  }
+};
+
 const moveImage = async (setId: string, fromIndex: number, toIndex: number) => {
   const images = getImagesForSet(setId);
   if (toIndex < 0 || toIndex >= images.length) return;
@@ -1042,6 +1163,7 @@ type FormPayload = {
   status: SetStatus;
   purchasePrice: string;
   pieceCount: string;
+  pricePerPiece: string;
   hasOriginalBox: boolean;
   hasPrintedPhoto: boolean;
   year: string;
@@ -1060,6 +1182,7 @@ const createEmptyForm = (): FormPayload => ({
   status: statuses[0],
   purchasePrice: '',
   pieceCount: '',
+  pricePerPiece: '',
   hasOriginalBox: false,
   hasPrintedPhoto: false,
   year: '',
@@ -1087,7 +1210,7 @@ const formatDecimalInputValue = (value: string) => {
   return decPart !== undefined ? `${intPart},${decPart}` : intPart;
 };
 
-const handleDecimalInput = (field: 'purchasePrice', rawValue: string) => {
+const handleDecimalInput = (field: 'purchasePrice' | 'pricePerPiece', rawValue: string) => {
   form.value[field] = formatDecimalInputValue(rawValue);
 };
 
@@ -1182,7 +1305,7 @@ const toggleChipFilter = (key: 'hasOriginalBox' | 'retiredProduct' | 'hasPrinted
 };
 
 const filteredSets = computed(() => {
-  let result = sets.value.slice();
+  let result = activeSets.value.slice();
 
   if (filters.manufacturer) {
     result = result.filter(
@@ -1276,6 +1399,7 @@ const startEditing = (set: BrickSet) => {
     purchasePrice:
       set.purchasePrice != null ? formatWithComma(set.purchasePrice, 2) : '',
     pieceCount: set.pieceCount != null ? String(set.pieceCount) : '',
+    pricePerPiece: set.pricePerPiece != null ? formatWithComma(set.pricePerPiece, 4) : '',
     hasOriginalBox: set.hasOriginalBox ?? false,
     hasPrintedPhoto: set.hasPrintedPhoto ?? false,
     year: set.year != null ? String(set.year) : '',
@@ -1294,6 +1418,15 @@ const saveSet = async () => {
   }
   submitting.value = true;
   try {
+    const pieceCount = form.value.pieceCount === '' ? null : Number(form.value.pieceCount);
+    let purchasePrice: number | null;
+    const isWishlistItem = editingId.value ? editingSet.value?.listType === 'wishlist' : activeTab.value === 'wishlist';
+    if (isWishlistItem) {
+      const ppp = form.value.pricePerPiece === '' ? null : parseDecimalString(form.value.pricePerPiece);
+      purchasePrice = ppp != null && pieceCount ? ppp * pieceCount : null;
+    } else {
+      purchasePrice = form.value.purchasePrice === '' ? null : parseDecimalString(form.value.purchasePrice);
+    }
     const payload: Record<string, unknown> = {
       manufacturer: form.value.manufacturer,
       setName: form.value.setName,
@@ -1303,9 +1436,9 @@ const saveSet = async () => {
         ? form.value.brickSize
         : 'Standard',
       status: form.value.status,
-      purchasePrice:
-        form.value.purchasePrice === '' ? null : parseDecimalString(form.value.purchasePrice),
-      pieceCount: form.value.pieceCount === '' ? null : Number(form.value.pieceCount)
+      purchasePrice,
+      pieceCount,
+      listType: editingId.value ? undefined : activeTab.value
     };
     if (editingId.value) {
       payload.hasOriginalBox = form.value.hasOriginalBox;
@@ -1391,9 +1524,10 @@ onMounted(async () => {
   --border-input: rgba(15, 23, 42, 0.2);
   --border-dashed: rgba(15, 23, 42, 0.3);
 
-  --accent: #ffd502;
-  --accent-soft: #fff699;
-  --accent-text: #000;
+  --accent: #e96f14;
+  --accent-soft: rgba(233, 111, 20, 0.14);
+  --accent-text: #fff;
+  --accent-border: #ffd502;
 
   --shadow-card: 0 15px 35px rgba(15, 23, 42, 0.1);
   --shadow-button: 0 8px 16px rgba(15, 23, 42, 0.1);
@@ -1458,9 +1592,10 @@ onMounted(async () => {
   --border-input: rgba(148, 163, 184, 0.25);
   --border-dashed: rgba(148, 163, 184, 0.35);
 
-  --accent: #ffd502;
-  --accent-soft: rgba(255, 213, 2, 0.2);
-  --accent-text: #000;
+  --accent: #ea580c;
+  --accent-soft: rgba(234, 88, 12, 0.2);
+  --accent-text: #fff;
+  --accent-border: #ffd502;
 
   --shadow-card: 0 15px 35px rgba(0, 0, 0, 0.3);
   --shadow-button: 0 8px 16px rgba(0, 0, 0, 0.25);
@@ -1563,6 +1698,39 @@ onMounted(async () => {
   color: var(--text-primary);
 }
 
+.page-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.page-tabs button {
+  padding: 0.35rem 0.75rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  border-radius: 0;
+}
+
+.page-tabs button.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent-border);
+}
+
+.form-actions-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
 .content-grid {
   display: grid;
   gap: 1rem;
@@ -1575,16 +1743,23 @@ onMounted(async () => {
   box-shadow: var(--shadow-card);
 }
 
-.form-card button {
+.form-card button:not(.delete-set-button) {
   width: 100%;
-  padding: 0.85rem;
-  margin-top: 0.75rem;
-  border: none;
-  border-radius: 0.9rem;
+  padding: 0.5rem;
+  margin-top: 0.5rem;
+  border: 1px solid var(--border-default);
+  border-radius: 0.6rem;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.form-card button:not(.delete-set-button):hover {
   background: var(--accent);
   color: var(--accent-text);
-  font-size: 1rem;
-  cursor: pointer;
+  border-color: var(--accent);
 }
 
 .text-button {
@@ -1596,15 +1771,48 @@ onMounted(async () => {
   cursor: pointer;
 }
 
+.move-hint {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin: 0 0 1rem;
+}
+
+.move-price-label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.move-price-label input {
+  padding: 0.65rem;
+  margin-top: 0.15rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--border-input);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.overlay-card .primary-button {
+  width: 100%;
+  padding: 0.5rem;
+  border-radius: 0.6rem;
+  font-size: 0.8rem;
+}
+
+.move-confirm-button {
+  width: 100%;
+}
+
 .delete-set-button {
   width: 100%;
-  padding: 0.6rem;
-  margin-top: 1.5rem;
+  padding: 0.5rem;
   border: 1px solid var(--border-danger);
-  border-radius: 0.9rem;
+  border-radius: 0.6rem;
   background: var(--bg-surface);
   color: var(--color-danger);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
@@ -1701,7 +1909,7 @@ onMounted(async () => {
 
 .form-tabs button.active {
   color: var(--text-primary);
-  border-bottom-color: var(--accent);
+  border-bottom-color: var(--accent-border);
   font-weight: 600;
 }
 
@@ -1764,9 +1972,26 @@ onMounted(async () => {
 .list-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  justify-content: flex-end;
   margin-bottom: 1rem;
+}
+
+.add-button {
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 50%;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.add-button:hover {
+  background: var(--accent);
+  color: var(--accent-text);
 }
 
 .controls-card {
@@ -1782,6 +2007,10 @@ onMounted(async () => {
   grid-template-columns: repeat(6, 1fr);
   gap: 1.25rem;
   margin: 0;
+}
+
+.stats-grid div {
+  text-align: center;
 }
 
 .stats-grid dt {
@@ -1930,19 +2159,21 @@ onMounted(async () => {
 }
 
 .primary-button {
-  border: none;
+  border: 1px solid var(--border-default);
   border-radius: 0.9rem;
-  background: var(--accent);
-  color: var(--accent-text);
+  background: var(--bg-surface);
+  color: var(--text-primary);
   font-size: 0.95rem;
   font-weight: 600;
   padding: 0.65rem 1.25rem;
   cursor: pointer;
-  transition: filter 0.2s ease;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .primary-button:hover {
-  filter: brightness(0.95);
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
 }
 
 .set-grid {
@@ -2032,20 +2263,39 @@ onMounted(async () => {
   right: 0.4rem;
   width: 2rem;
   height: 2rem;
+  padding: 0;
   border-radius: 50%;
   border: none;
   background: var(--bg-surface);
   box-shadow: var(--shadow-gear);
   cursor: pointer;
-  font-size: 1.05rem;
-  line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
   opacity: 0;
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity 0.2s ease;
   z-index: 2;
+}
+
+.manage-images-gear__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  font-size: 1.05rem;
+  line-height: 1;
+  transition: transform 0.2s ease;
+  transform-origin: 50% 50%;
+}
+
+.manage-images-gear:hover .manage-images-gear__icon {
+  transform: rotate(45deg);
+}
+
+.manage-images-gear:hover {
+  background: var(--bg-surface);
 }
 
 .set-card__image-wrapper:hover .manage-images-gear {
@@ -2059,11 +2309,6 @@ onMounted(async () => {
 
 .set-card__image-empty:hover .manage-images-gear {
   opacity: 1;
-}
-
-.manage-images-gear:hover {
-  transform: rotate(45deg);
-  background: var(--bg-surface);
 }
 
 .image-gallery-empty {
@@ -2102,8 +2347,9 @@ onMounted(async () => {
 }
 
 .image-upload-form .primary-button {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   padding: 0.5rem;
+  border-radius: 0.6rem;
 }
 
 .image-manager-card {
@@ -2114,6 +2360,9 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  border-top: 1px solid var(--accent-border);
+  padding-top: 0.75rem;
+  margin-top: 0.25rem;
 }
 
 .image-manager-item {
@@ -2242,60 +2491,51 @@ onMounted(async () => {
   cursor: not-allowed;
 }
 
-.scrape-section {
-  border: 1px solid var(--border-default);
-  border-radius: 0.75rem;
-  padding: 0;
-  margin-bottom: 0.5rem;
+.upload-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-default);
+  margin-bottom: 0.75rem;
 }
 
-.scrape-toggle {
-  padding: 0.6rem 0.9rem;
-  font-size: 0.85rem;
+.upload-tabs button {
+  padding: 0.35rem 0.75rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  font-size: 0.7rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
   cursor: pointer;
-  user-select: none;
+  transition: color 0.15s, border-color 0.15s;
+  border-radius: 0;
 }
 
-.scrape-section[open] .scrape-toggle {
-  border-bottom: 1px solid var(--border-light);
-  margin-bottom: 0.5rem;
+.upload-tabs button.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent-border);
 }
 
-.scrape-form {
+.upload-panel {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-  padding: 0 0.9rem 0.9rem;
+  margin-bottom: 0.75rem;
 }
 
-.scrape-mode-tabs {
-  display: flex;
-  gap: 0.3rem;
-  margin-bottom: 0.2rem;
-}
-
-.scrape-mode-tab {
-  flex: 1;
-  padding: 0.4rem;
-  border: 1px solid var(--border-medium);
-  border-radius: 0.5rem;
+.upload-panel input[type="url"] {
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--border-input);
   background: var(--bg-surface);
-  font-size: 0.8rem;
-  cursor: pointer;
-  color: var(--text-tertiary);
-  transition: background 0.15s ease, color 0.15s ease;
+  color: var(--text-primary);
+  font-size: 0.85rem;
 }
 
-.scrape-mode-tab.active {
-  background: var(--accent);
-  color: var(--accent-text);
-  border-color: var(--accent);
-  font-weight: 600;
-}
-
-.scrape-form label {
+.upload-panel label {
   font-size: 0.8rem;
   color: var(--text-secondary);
   display: flex;
@@ -2308,30 +2548,29 @@ onMounted(async () => {
   color: var(--text-muted);
 }
 
-.scrape-form input,
-.scrape-form textarea {
+.upload-panel textarea {
   padding: 0.55rem 0.7rem;
   border-radius: 0.6rem;
   border: 1px solid var(--border-input);
   background: var(--bg-surface);
   color: var(--text-primary);
-  font-size: 0.85rem;
-  font-family: inherit;
-  resize: vertical;
-}
-
-.scrape-form textarea {
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
   font-size: 0.78rem;
   line-height: 1.5;
+  resize: vertical;
 }
 
-.scrape-form .primary-button {
-  font-size: 0.85rem;
+.upload-panel input[type="url"]:last-of-type {
+  font-family: inherit;
+}
+
+.upload-panel .primary-button {
+  font-size: 0.8rem;
   padding: 0.5rem;
+  border-radius: 0.6rem;
 }
 
-.scrape-result {
+.upload-success {
   font-size: 0.8rem;
   color: var(--color-success);
   padding: 0.4rem 0.6rem;
@@ -2339,7 +2578,7 @@ onMounted(async () => {
   border-radius: 0.5rem;
 }
 
-.scrape-error {
+.upload-error {
   font-size: 0.8rem;
   color: var(--color-danger);
   padding: 0.4rem 0.6rem;
@@ -2422,6 +2661,7 @@ onMounted(async () => {
   border-radius: 999px;
   background: var(--status-default-bg);
   color: var(--text-strong);
+  cursor: pointer;
 }
 
 .set-card__status[data-status="New"] {
@@ -2587,9 +2827,25 @@ onMounted(async () => {
   margin-bottom: 1rem;
 }
 
-.overlay-header > .icon-button {
+.overlay-header__actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.overlay-header__actions > .icon-button {
   width: 2.5rem;
   padding: 0;
+}
+
+.move-icon-button {
+  color: var(--status-built-text) !important;
+  font-size: 1.2rem;
+  transition: background 0.15s, color 0.15s;
+}
+
+.move-icon-button:hover {
+  background: var(--status-built-bg);
 }
 
 .overlay-header h2 {
