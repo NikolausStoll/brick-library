@@ -28,6 +28,12 @@ try {
 
 const IMAGE_QUALITY = Number(process.env.IMAGE_QUALITY || 80);
 const IMAGE_MAX_DIMENSION = Number(process.env.IMAGE_MAX_DIMENSION || 2400);
+const IMAGE_QUALITY_THUMB = Number(process.env.IMAGE_QUALITY_THUMB || 80);
+const IMAGE_MAX_DIMENSION_THUMB = Number(process.env.IMAGE_MAX_DIMENSION_THUMB || 600);
+
+const getThumbFileName = (fileName) => fileName.replace(/(\.[^.]+)$/, '-thumb$1');
+const getThumbPath = (setId, fileName) => path.join(UPLOAD_DIR, String(setId), getThumbFileName(fileName));
+const getThumbUrl = (setId, fileName) => path.posix.join('/uploads', String(setId), getThumbFileName(fileName));
 
 const optimizeImage = async (inputBuffer) => {
   const image = sharp(inputBuffer);
@@ -70,6 +76,34 @@ const optimizeImage = async (inputBuffer) => {
     height: info.height ?? null,
     fileSize: info.size ?? data.length
   };
+};
+
+const createThumbBuffer = async (imageBuffer) => {
+  try {
+    const meta = await sharp(imageBuffer).metadata();
+    if (meta.format === 'svg' || meta.format === 'gif') {
+      return null;
+    }
+    const data = await sharp(imageBuffer)
+      .resize({
+        width: IMAGE_MAX_DIMENSION_THUMB,
+        height: IMAGE_MAX_DIMENSION_THUMB,
+        fit: 'inside',
+        withoutEnlargement: true
+      })
+      .webp({ quality: IMAGE_QUALITY_THUMB })
+      .toBuffer();
+    return data;
+  } catch {
+    return null;
+  }
+};
+
+const writeThumbFromBuffer = async (setId, fileName, imageBuffer) => {
+  const thumbBuffer = await createThumbBuffer(imageBuffer);
+  if (!thumbBuffer) return;
+  const thumbPath = getThumbPath(setId, fileName);
+  fs.writeFileSync(thumbPath, thumbBuffer);
 };
 
 const db = new Database(DB_PATH);
@@ -272,8 +306,16 @@ const mapRow = (row) => {
 
 const serializeImageRow = (row) => ({
   ...row,
-  url: getImageUrl(row.setId, row.fileName)
+  url: getImageUrl(row.setId, row.fileName),
+  thumbUrl: getThumbUrl(row.setId, row.fileName)
 });
+
+const unlinkImageAndThumb = (setId, fileName) => {
+  const mainPath = getImagePath(setId, fileName);
+  try { fs.unlinkSync(mainPath); } catch { /* may be gone */ }
+  const thumbPath = getThumbPath(setId, fileName);
+  try { fs.unlinkSync(thumbPath); } catch { /* may be gone */ }
+};
 
 const findImageForSet = (setId, imageId) => {
   const numericSetId = Number(setId);
@@ -355,7 +397,7 @@ app.delete('/api/sets/:id', (req, res) => {
   }
   const images = selectImagesBySetIdStmt.all(setId);
   for (const image of images) {
-    try { fs.unlinkSync(getImagePath(setId, image.fileName)); } catch { /* file may be gone */ }
+    unlinkImageAndThumb(setId, image.fileName);
     deleteImageStmt.run(image.id);
   }
   const setDir = path.join(UPLOAD_DIR, String(setId));
@@ -405,6 +447,7 @@ app.post(
         const fileName = `${id}${ext}`;
         const optimizedPath = path.join(path.dirname(file.path), fileName);
         fs.writeFileSync(optimizedPath, buffer);
+        await writeThumbFromBuffer(setId, fileName, buffer);
         if (optimizedPath !== file.path) fs.unlinkSync(file.path);
         const sortOrder = maxOrder + 1 + i;
         const row = {
@@ -464,11 +507,7 @@ app.delete('/api/sets/:setId/images/:imageId', ensureSetExists, (req, res) => {
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'Image file not found' });
   }
-  try {
-    fs.unlinkSync(filePath);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to remove image file' });
-  }
+  unlinkImageAndThumb(setId, image.fileName);
   deleteImageStmt.run(imageId);
   res.status(204).send();
 });
@@ -476,10 +515,8 @@ app.delete('/api/sets/:setId/images/:imageId', ensureSetExists, (req, res) => {
 app.delete('/api/sets/:setId/images', ensureSetExists, (req, res) => {
   const setId = Number(req.params.setId);
   const images = selectImagesBySetIdStmt.all(setId);
-  const setDir = path.join(UPLOAD_DIR, String(setId));
   for (const image of images) {
-    const filePath = path.join(setDir, image.fileName);
-    try { fs.unlinkSync(filePath); } catch { /* file may already be gone */ }
+    unlinkImageAndThumb(setId, image.fileName);
     deleteImageStmt.run(image.id);
   }
   res.status(204).send();
@@ -559,6 +596,7 @@ app.post('/api/sets/:setId/images/url', ensureSetExists, async (req, res) => {
   const id = randomUUID();
   const fileName = `${id}${optimized.ext}`;
   fs.writeFileSync(path.join(setDir, fileName), optimized.buffer);
+  await writeThumbFromBuffer(setId, fileName, optimized.buffer);
 
   const sortOrder = maxOrder + 1;
   const row = {
@@ -723,6 +761,7 @@ app.post('/api/sets/:setId/images/scrape', ensureSetExists, async (req, res) => 
     const fileName = `${id}${optimized.ext}`;
     const filePath = path.join(setDir, fileName);
     fs.writeFileSync(filePath, optimized.buffer);
+    await writeThumbFromBuffer(setId, fileName, optimized.buffer);
 
     const sortOrder = nextOrder++;
     const row = {

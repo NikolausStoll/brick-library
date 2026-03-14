@@ -125,11 +125,13 @@
             <div class="set-card__image-panel" @click.stop>
               <div v-if="getImagesForSet(set.id).length" class="set-card__image-wrapper">
                 <img
-                  :src="getCurrentImage(set.id)?.url"
+                  :src="getCurrentImage(set.id)?.thumbUrl || getCurrentImage(set.id)?.url"
+                  :data-fallback="getCurrentImage(set.id)?.url"
                   :alt="`Image preview for ${set.setName}`"
                   class="set-card__image"
                   loading="lazy"
                   @click="openImageViewer(set.id)"
+                  @error="(e) => { const t = (e.target as HTMLImageElement); const fb = t.dataset.fallback; if (fb) t.src = fb; }"
                 />
                 <div class="set-card__image-controls" v-if="getImagesForSet(set.id).length > 1">
                   <button
@@ -583,7 +585,12 @@
           :key="image.id"
           class="image-manager-item"
         >
-          <img :src="image.url" :alt="image.fileName" />
+          <img
+            :src="image.thumbUrl || image.url"
+            :data-fallback="image.url"
+            :alt="image.fileName"
+            @error="(e) => { const t = (e.target as HTMLImageElement); const fb = t.dataset.fallback; if (fb) t.src = fb; }"
+          />
           <div class="image-manager-item-info">
             <span v-if="!isMobileLayout" class="image-manager-item-date">{{ formatImageDate(image.createdAt) }}</span>
             <span v-if="!isMobileLayout" class="image-manager-item-source">{{ image.source }}</span>
@@ -736,6 +743,7 @@ type SetImage = {
   sortOrder: number;
   createdAt: string;
   url: string;
+  thumbUrl: string;
   imageWidth: number | null;
   imageHeight: number | null;
   fileSize: number | null;
