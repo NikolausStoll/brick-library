@@ -596,8 +596,8 @@
             <span v-if="!isMobileLayout" class="image-manager-item-source">{{ image.source }}</span>
             <span v-if="!isMobileLayout" class="image-manager-item-meta">Image size: {{ formatImageDimensions(image) }}</span>
             <span v-else class="image-manager-item-meta">{{ formatImageDimensions(image) }}</span>
-            <span v-if="!isMobileLayout" class="image-manager-item-meta">File size: {{ formatFileSize(image.fileSize) }}</span>
-            <span v-else class="image-manager-item-meta">{{ formatFileSize(image.fileSize) }}</span>
+            <span v-if="!isMobileLayout" class="image-manager-item-meta">File size: {{ formatFileSize(image.fileSize) }} / {{ formatFileSize(image.fileSizeThumb) }}</span>
+            <span v-else class="image-manager-item-meta">{{ formatFileSize(image.fileSize) }} / {{ formatFileSize(image.fileSizeThumb) }}</span>
           </div>
           <div class="image-manager-item-actions">
             <div class="image-manager-sort-buttons">
@@ -747,6 +747,7 @@ type SetImage = {
   imageWidth: number | null;
   imageHeight: number | null;
   fileSize: number | null;
+  fileSizeThumb: number | null;
 };
 
 const setImages = reactive<Record<string, SetImage[]>>({});
@@ -799,8 +800,8 @@ const formatImageDimensions = (image: SetImage) => {
 
 const formatFileSize = (value: number | null) => {
   if (value == null) return '—';
-  const kb = value / 1024;
-  return `${kb.toFixed(1)} KB`;
+  const kb = Math.round(value / 1024);
+  return `${kb} KB`;
 };
 
 const showNextImage = (setId: string) => {

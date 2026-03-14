@@ -101,9 +101,10 @@ const createThumbBuffer = async (imageBuffer) => {
 
 const writeThumbFromBuffer = async (setId, fileName, imageBuffer) => {
   const thumbBuffer = await createThumbBuffer(imageBuffer);
-  if (!thumbBuffer) return;
+  if (!thumbBuffer) return null;
   const thumbPath = getThumbPath(setId, fileName);
   fs.writeFileSync(thumbPath, thumbBuffer);
+  return thumbBuffer.length;
 };
 
 const db = new Database(DB_PATH);
@@ -145,6 +146,7 @@ const CREATE_SET_IMAGES_TABLE_SQL = `
     imageWidth INTEGER,
     imageHeight INTEGER,
     fileSize INTEGER,
+    fileSizeThumb INTEGER,
     FOREIGN KEY (setId) REFERENCES sets(id)
   )
 `;
@@ -156,6 +158,11 @@ const ensureSchema = () => {
   const hasListType = setsTableInfo.some((col) => col.name === 'listType');
   if (!hasListType) {
     db.exec("ALTER TABLE sets ADD COLUMN listType TEXT NOT NULL DEFAULT 'collection'");
+  }
+  const imagesTableInfo = db.prepare("PRAGMA table_info('set_images')").all();
+  const hasFileSizeThumb = imagesTableInfo.some((col) => col.name === 'fileSizeThumb');
+  if (!hasFileSizeThumb) {
+    db.exec('ALTER TABLE set_images ADD COLUMN fileSizeThumb INTEGER');
   }
 };
 
@@ -186,7 +193,7 @@ const INSERT_SET_SQL = `INSERT INTO sets (${BASE_COLUMNS.join(', ')}, createdAt,
 ).join(', ')}, @createdAt, @updatedAt)`;
 
 const INSERT_SET_IMAGE_SQL =
-  'INSERT INTO set_images (id, setId, fileName, source, originalUrl, sortOrder, createdAt, imageWidth, imageHeight, fileSize) VALUES (@id, @setId, @fileName, @source, @originalUrl, @sortOrder, @createdAt, @imageWidth, @imageHeight, @fileSize)';
+  'INSERT INTO set_images (id, setId, fileName, source, originalUrl, sortOrder, createdAt, imageWidth, imageHeight, fileSize, fileSizeThumb) VALUES (@id, @setId, @fileName, @source, @originalUrl, @sortOrder, @createdAt, @imageWidth, @imageHeight, @fileSize, @fileSizeThumb)';
 
 const app = express();
 app.use(express.json());
@@ -447,7 +454,7 @@ app.post(
         const fileName = `${id}${ext}`;
         const optimizedPath = path.join(path.dirname(file.path), fileName);
         fs.writeFileSync(optimizedPath, buffer);
-        await writeThumbFromBuffer(setId, fileName, buffer);
+        const fileSizeThumb = await writeThumbFromBuffer(setId, fileName, buffer);
         if (optimizedPath !== file.path) fs.unlinkSync(file.path);
         const sortOrder = maxOrder + 1 + i;
         const row = {
@@ -460,7 +467,8 @@ app.post(
           createdAt: now,
           imageWidth: width,
           imageHeight: height,
-          fileSize
+          fileSize,
+          fileSizeThumb
         };
         insertImageStmt.run(row);
         created.push(serializeImageRow(row));
@@ -596,7 +604,7 @@ app.post('/api/sets/:setId/images/url', ensureSetExists, async (req, res) => {
   const id = randomUUID();
   const fileName = `${id}${optimized.ext}`;
   fs.writeFileSync(path.join(setDir, fileName), optimized.buffer);
-  await writeThumbFromBuffer(setId, fileName, optimized.buffer);
+  const fileSizeThumb = await writeThumbFromBuffer(setId, fileName, optimized.buffer);
 
   const sortOrder = maxOrder + 1;
   const row = {
@@ -609,7 +617,8 @@ app.post('/api/sets/:setId/images/url', ensureSetExists, async (req, res) => {
     createdAt: now,
     imageWidth: optimized.width,
     imageHeight: optimized.height,
-    fileSize: optimized.fileSize
+    fileSize: optimized.fileSize,
+    fileSizeThumb
   };
   insertImageStmt.run(row);
 
@@ -761,7 +770,7 @@ app.post('/api/sets/:setId/images/scrape', ensureSetExists, async (req, res) => 
     const fileName = `${id}${optimized.ext}`;
     const filePath = path.join(setDir, fileName);
     fs.writeFileSync(filePath, optimized.buffer);
-    await writeThumbFromBuffer(setId, fileName, optimized.buffer);
+    const fileSizeThumb = await writeThumbFromBuffer(setId, fileName, optimized.buffer);
 
     const sortOrder = nextOrder++;
     const row = {
@@ -774,7 +783,8 @@ app.post('/api/sets/:setId/images/scrape', ensureSetExists, async (req, res) => 
       createdAt: now,
       imageWidth: optimized.width,
       imageHeight: optimized.height,
-      fileSize: optimized.fileSize
+      fileSize: optimized.fileSize,
+      fileSizeThumb
     };
     insertImageStmt.run(row);
     created.push(serializeImageRow(row));
