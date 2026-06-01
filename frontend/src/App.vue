@@ -54,7 +54,7 @@
               </select>
             </div>
             <div class="chip filter-chip" :class="{ active: filters.brickSize }">
-              <span>{{ filters.brickSize || 'Brick size' }}</span>
+              <span>{{ filters.brickSize || isMobileLayout ? 'Size' : 'Brick size' }}</span>
               <select v-model="filters.brickSize">
                 <option value="">All</option>
                 <option v-for="size in brickSizes" :key="size" :value="size">
@@ -290,6 +290,7 @@
           <span>Manufacturer</span>
           <span>Set Number</span>
           <span>Lego Set Number</span>
+          <span>Price</span>
           <span>Pieces</span>
           <span>Price per Piece</span>
           <span>Status</span>
@@ -329,6 +330,7 @@
           <span class="set-list-col set-list-col--mfr set-list-col--desktop" :title="set.manufacturer">{{ set.manufacturer }}</span>
           <span class="set-list-col set-list-col--desktop">{{ formatListValue(set.setNumber) }}</span>
           <span class="set-list-col set-list-col--desktop">{{ formatListValue(set.legoReferenceNumber) }}</span>
+          <span class="set-list-col set-list-col--desktop">{{ formatPrice(set.purchasePrice) }}</span>
           <span class="set-list-col set-list-col--desktop">{{ formatListValue(set.pieceCount) }}</span>
           <span class="set-list-col set-list-col--desktop">{{ formatCents(set.pricePerPiece) }}</span>
           <span class="set-list-col set-list-col--status set-list-col--desktop">
@@ -355,6 +357,8 @@
                 </template>
               </div>
               <span class="set-list-line-right">
+                <span>{{ formatPrice(set.purchasePrice) }}</span>
+                <span class="set-list-line-right-sep" aria-hidden="true">·</span>
                 <span>{{ formatListValue(set.pieceCount) }}</span>
                 <span class="set-list-line-right-sep" aria-hidden="true">·</span>
                 <span>{{ formatCents(set.pricePerPiece) }}</span>
@@ -2455,7 +2459,7 @@ onMounted(async () => {
 
 .set-list-header {
   display: grid;
-  grid-template-columns: 48px 2fr 0.85fr 1fr 1fr 0.75fr 1fr auto;
+  grid-template-columns: 48px 2fr 0.85fr 1fr 1fr 0.85fr 0.75fr 1fr auto;
   gap: 0.75rem;
   align-items: center;
   padding: 0.35rem 0.75rem 0.5rem;
@@ -2558,7 +2562,7 @@ onMounted(async () => {
 .set-list-line-left {
   display: flex;
   align-items: baseline;
-  gap: 0.35rem;
+  gap: 0.2rem;
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -2588,7 +2592,7 @@ onMounted(async () => {
   flex-shrink: 0;
   display: flex;
   align-items: baseline;
-  gap: 0.3rem;
+  gap: 0.2rem;
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-primary);
@@ -3375,7 +3379,7 @@ onMounted(async () => {
   }
 
   .set-list-row {
-    grid-template-columns: 48px 2fr 0.85fr 1fr 1fr 0.75fr 1fr auto;
+    grid-template-columns: 48px 2fr 0.85fr 1fr 1fr 0.85fr 0.75fr 1fr auto;
     grid-template-rows: auto;
     gap: 0.75rem;
     padding: 0.5rem 0.75rem;
@@ -3476,7 +3480,7 @@ onMounted(async () => {
   }
 
   .set-list-thumb {
-    border-width: 1px;
+    border-width: 3px;
     border-style: solid;
     border-color: var(--border-light);
   }
