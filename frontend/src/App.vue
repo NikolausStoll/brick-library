@@ -27,6 +27,14 @@
                 </option>
               </select>
             </div>
+            <button
+              type="button"
+              class="chip sort-chip"
+              :class="{ active: filters.hasLegoNumber }"
+              @click="toggleChipFilter('hasLegoNumber')"
+            >
+              <span>Lego#</span>
+            </button>
             <div class="chip filter-chip" :class="{ active: filters.theme }">
               <span>{{ filters.theme || 'Theme' }}</span>
               <select v-model="filters.theme">
@@ -74,6 +82,31 @@
             </button>
           </div>
         </div>
+        <div class="chip-group layout-switcher">
+          <span class="controls-label">Layout</span>
+          <div class="layout-switcher-buttons">
+            <button
+              type="button"
+              class="chip layout-chip"
+              :class="{ active: layoutMode === 'card' }"
+              aria-label="Card layout"
+              :aria-pressed="layoutMode === 'card'"
+              @click="layoutMode = 'card'"
+            >
+              Cards
+            </button>
+            <button
+              type="button"
+              class="chip layout-chip"
+              :class="{ active: layoutMode === 'list' }"
+              aria-label="List layout"
+              :aria-pressed="layoutMode === 'list'"
+              @click="layoutMode = 'list'"
+            >
+              List
+            </button>
+          </div>
+        </div>
         <button type="button" class="chip reset-chip" @click="resetFilters">
           Reset
         </button>
@@ -108,13 +141,27 @@
       </dl>
     </section>
     <section class="card list-card">
-      <button type="button" class="add-button" @click="openAddForm" aria-label="Add set">+</button>
+      <button
+        v-if="isMobileLayout"
+        type="button"
+        class="add-set-bar-button"
+        @click="openAddForm"
+      >
+        {{ activeTab === 'wishlist' ? 'Add to wishlist' : 'Add Set' }}
+      </button>
+      <button
+        v-else
+        type="button"
+        class="add-button"
+        @click="openAddForm"
+        aria-label="Add set"
+      >+</button>
       <div v-if="filteredSets.length === 0" class="empty">
         {{ activeSets.length === 0
           ? (activeTab === 'wishlist' ? 'No wishlist items yet.' : 'No sets yet. Add one to start tracking your library.')
           : 'No sets match the active filters.' }}
       </div>
-      <div v-else class="set-grid">
+      <div v-else-if="layoutMode === 'card'" class="set-grid">
         <article
           v-for="set in filteredSets"
           :key="set.id"
@@ -232,6 +279,86 @@
                   @click.stop="toggleChipFilter('hasPrintedPhoto')"
                 >Photo</span>
               </div>
+            </div>
+          </div>
+        </article>
+      </div>
+      <div v-else class="set-list" role="list">
+        <div v-if="!isMobileLayout" class="set-list-header" aria-hidden="true">
+          <span class="set-list-header-thumb"></span>
+          <span>Name</span>
+          <span>Manufacturer</span>
+          <span>Set Number</span>
+          <span>Lego Set Number</span>
+          <span>Pieces</span>
+          <span>Price per Piece</span>
+          <span>Status</span>
+        </div>
+        <article
+          v-for="set in filteredSets"
+          :key="set.id"
+          class="set-list-row"
+          role="listitem"
+          tabindex="0"
+          @click="startEditing(set)"
+          @keydown.enter="startEditing(set)"
+          @keydown.space.prevent="startEditing(set)"
+        >
+          <div
+            class="set-list-thumb"
+            :data-status="set.status"
+            @click.stop="onListThumbWrapperClick(set)"
+          >
+            <img
+              v-if="getListThumbForSet(set.id)"
+              :src="getListThumbForSet(set.id)!"
+              :data-fallback="getCurrentImage(set.id)?.url"
+              :alt="`Thumbnail for ${set.setName}`"
+              loading="lazy"
+              @click.stop="onListThumbClick(set)"
+              @error="(e) => { const t = (e.target as HTMLImageElement); const fb = t.dataset.fallback; if (fb) t.src = fb; }"
+            />
+            <span
+              v-else
+              class="set-list-thumb-empty"
+              aria-hidden="true"
+              @click.stop="onListThumbClick(set)"
+            >—</span>
+          </div>
+          <span class="set-list-col set-list-col--name set-list-col--desktop" :title="set.setName">{{ set.setName }}</span>
+          <span class="set-list-col set-list-col--mfr set-list-col--desktop" :title="set.manufacturer">{{ set.manufacturer }}</span>
+          <span class="set-list-col set-list-col--desktop">{{ formatListValue(set.setNumber) }}</span>
+          <span class="set-list-col set-list-col--desktop">{{ formatListValue(set.legoReferenceNumber) }}</span>
+          <span class="set-list-col set-list-col--desktop">{{ formatListValue(set.pieceCount) }}</span>
+          <span class="set-list-col set-list-col--desktop">{{ formatCents(set.pricePerPiece) }}</span>
+          <span class="set-list-col set-list-col--status set-list-col--desktop">
+            <span
+              class="set-card__status"
+              :data-status="set.status"
+              role="button"
+              tabindex="0"
+              @click.stop="cycleSetStatus(set)"
+              @keydown.enter.stop="cycleSetStatus(set)"
+              @keydown.space.prevent.stop="cycleSetStatus(set)"
+            >{{ set.status }}</span>
+          </span>
+          <div class="set-list-mobile-lines">
+            <div class="set-list-line set-list-line--primary">
+              <span class="set-list-name">{{ set.setName }}</span>
+            </div>
+            <div class="set-list-line set-list-line--secondary">
+              <div class="set-list-line-left">
+                <span class="set-list-manufacturer">{{ set.manufacturer }}</span>
+                <template v-if="set.setNumber || set.legoReferenceNumber">
+                  <span class="set-list-line-left-sep" aria-hidden="true">·</span>
+                  <span class="set-card__number set-list-set-number">{{ formatSetNumber(set) }}</span>
+                </template>
+              </div>
+              <span class="set-list-line-right">
+                <span>{{ formatListValue(set.pieceCount) }}</span>
+                <span class="set-list-line-right-sep" aria-hidden="true">·</span>
+                <span>{{ formatCents(set.pricePerPiece) }}</span>
+              </span>
             </div>
           </div>
         </article>
@@ -710,7 +837,10 @@ const updateIsMobileLayout = () => {
   isMobileLayout.value = window.innerWidth <= MOBILE_BREAKPOINT;
 };
 
+type LayoutMode = 'card' | 'list';
 type SortField = 'setName' | 'purchasePrice' | 'pieceCount' | 'pricePerPiece';
+
+const layoutMode = ref<LayoutMode>('card');
 const sortOptions: Array<{ key: SortField; label: string }> = [
   { key: 'setName', label: 'Name' },
   { key: 'purchasePrice', label: 'Price' },
@@ -1295,6 +1425,33 @@ const formatSetNumber = (set: BrickSet) => {
   return set.setNumber ? `#${set.setNumber}` : '';
 };
 
+const formatListValue = (value: string | number | null | undefined) => {
+  if (value === null || value === undefined || value === '') {
+    return '—';
+  }
+  return String(value);
+};
+
+const getListThumbForSet = (setId: string) => {
+  const image = getCurrentImage(setId);
+  if (!image) return null;
+  return image.thumbUrl || image.url;
+};
+
+const onListThumbClick = (set: BrickSet) => {
+  if (getImagesForSet(set.id).length) {
+    openImageViewer(set.id);
+  } else {
+    openImageManager(set.id);
+  }
+};
+
+const onListThumbWrapperClick = (set: BrickSet) => {
+  if (isMobileLayout.value) {
+    cycleSetStatus(set);
+  }
+};
+
 const formatPrice = (value: number | null) => {
   if (value === null || value === undefined) {
     return '—';
@@ -1318,7 +1475,8 @@ const filters = reactive({
   hasOriginalBox: false,
   retiredProduct: false,
   hasPrintedPhoto: false,
-  hasInstructions: false
+  hasInstructions: false,
+  hasLegoNumber: false
 });
 
 const sortField = ref<SortField>('setName');
@@ -1346,11 +1504,14 @@ const resetFilters = () => {
   filters.retiredProduct = false;
   filters.hasPrintedPhoto = false;
   filters.hasInstructions = false;
+  filters.hasLegoNumber = false;
   sortField.value = 'setName';
   sortDirection.value = 'asc';
 };
 
-const toggleChipFilter = (key: 'hasOriginalBox' | 'retiredProduct' | 'hasPrintedPhoto' | 'hasInstructions') => {
+const toggleChipFilter = (
+  key: 'hasOriginalBox' | 'retiredProduct' | 'hasPrintedPhoto' | 'hasInstructions' | 'hasLegoNumber'
+) => {
   filters[key] = !filters[key];
 };
 
@@ -1361,6 +1522,9 @@ const filteredSets = computed(() => {
     result = result.filter(
       (set) => set.manufacturer?.toLowerCase() === filters.manufacturer.toLowerCase()
     );
+  }
+  if (filters.hasLegoNumber) {
+    result = result.filter((set) => Boolean(set.legoReferenceNumber?.trim()));
   }
   if (filters.theme) {
     result = result.filter((set) => set.theme === filters.theme);
@@ -1792,7 +1956,7 @@ onMounted(async () => {
 
 .card {
   background: var(--bg-card);
-  border-radius: 1.25rem;
+  border-radius: 0.5rem;
   padding: 1.5rem;
   box-shadow: var(--shadow-card);
 }
@@ -2042,6 +2206,27 @@ onMounted(async () => {
   color: var(--accent-text);
 }
 
+.add-set-bar-button {
+  display: none;
+  width: 100%;
+  margin-bottom: 0.65rem;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--border-default);
+  border-radius: 0.75rem;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.add-set-bar-button:hover {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
 .controls-card {
   padding: 0.75rem 1.25rem;
 }
@@ -2235,6 +2420,186 @@ onMounted(async () => {
   margin-top: 1rem;
 }
 
+.layout-switcher-buttons {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.layout-chip {
+  border: 1px solid var(--border-medium);
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.layout-chip.active {
+  border-color: var(--chip-instructions-text);
+  background: var(--chip-instructions-bg);
+  color: var(--chip-instructions-text);
+}
+
+.set-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.set-list-header {
+  display: grid;
+  grid-template-columns: 48px 2fr 0.85fr 1fr 1fr 0.75fr 1fr auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.35rem 0.75rem 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.set-list-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 0.35rem 0.75rem;
+  align-items: center;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg-elevated);
+  cursor: pointer;
+  outline: none;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.set-list-row:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent-border);
+}
+
+.set-list-row:hover {
+  background: var(--bg-surface);
+}
+
+.set-list-thumb {
+  grid-row: 1 / 3;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: 0.35rem;
+  overflow: hidden;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.set-list-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.set-list-thumb-empty {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.set-list-col--desktop {
+  display: none;
+}
+
+.set-list-mobile-lines {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.set-list-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.set-list-line--primary {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.set-list-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.set-list-line--secondary {
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.set-list-line-left {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.set-list-manufacturer {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.set-list-line-left-sep {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.set-list-set-number {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.set-list-line-right {
+  flex-shrink: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.set-list-line-right-sep {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
 .set-grid {
   display: grid;
   gap: 1rem;
@@ -2245,7 +2610,7 @@ onMounted(async () => {
 
 .set-card {
   padding: 1rem;
-  border-radius: 1rem;
+  border-radius: 0.5rem;
   background: var(--bg-elevated);
   border: 1px solid var(--border-light);
   cursor: pointer;
@@ -2274,7 +2639,7 @@ onMounted(async () => {
 .set-card__image {
   width: 100%;
   height: 100%;
-  border-radius: 0.75rem;
+  border-radius: 0.5rem;
   box-shadow: inset 0 0 0 1px var(--border-light);
   object-fit: contain;
   cursor: pointer;
@@ -3002,6 +3367,51 @@ onMounted(async () => {
   letter-spacing: 0.05em;
 }
 
+@media (min-width: 769px) {
+  .chip-group {
+    border-radius: 0.65rem;
+    outline: 1px solid var(--border-default);
+    outline-offset: 4px;
+  }
+
+  .set-list-row {
+    grid-template-columns: 48px 2fr 0.85fr 1fr 1fr 0.75fr 1fr auto;
+    grid-template-rows: auto;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    align-items: center;
+  }
+
+  .set-list-thumb {
+    grid-row: auto;
+  }
+
+  .set-list-col--desktop {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.85rem;
+  }
+
+  .set-list-col--name {
+    font-weight: 600;
+  }
+
+  .set-list-col--mfr {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+  }
+
+  .set-list-col--status {
+    justify-self: end;
+  }
+
+  .set-list-mobile-lines {
+    display: none;
+  }
+}
+
 @media (min-width: 768px) {
   .set-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -3015,6 +3425,28 @@ onMounted(async () => {
 }
 
 @media (max-width: 768px) {
+  .page {
+    padding: 0.5rem 0.35rem 2.5rem;
+  }
+
+  .content-grid {
+    gap: 0.65rem;
+  }
+
+  .card {
+    padding: 0.65rem 0.5rem;
+    border-radius: 0.5rem;
+  }
+
+  .list-card {
+    padding: 0.5rem 0.5rem;
+    overflow: hidden;
+  }
+
+  .add-set-bar-button {
+    display: block;
+  }
+
   .form-grid {
     grid-template-columns: 1fr;
   }
@@ -3025,9 +3457,47 @@ onMounted(async () => {
 
   .set-grid {
     display: grid;
-    gap: 1rem;
+    gap: 0.65rem;
     grid-template-columns: repeat(1, 1fr);
   }
+
+  .set-card {
+    padding: 0.5rem 0.35rem;
+  }
+
+  .set-list-row {
+    padding: 0.45rem 0;
+    gap: 0.3rem 0.45rem;
+    background: transparent;
+  }
+
+  .set-list-row:last-child {
+    border-bottom: none;
+  }
+
+  .set-list-thumb {
+    border-width: 1px;
+    border-style: solid;
+    border-color: var(--border-light);
+  }
+
+  .set-list-thumb[data-status='New'] {
+    border-color: var(--status-new-text);
+  }
+
+  .set-list-thumb[data-status='Building'] {
+    border-color: var(--status-building-text);
+  }
+
+  .set-list-thumb[data-status='Built'],
+  .set-list-thumb[data-status='Disassembled'] {
+    border-color: var(--status-built-text);
+  }
+
+  .set-list-thumb[data-status='Sold'] {
+    border-color: var(--status-sold-text);
+  }
+
   .set-card__layout {
     grid-template-columns: 1fr;
   }
