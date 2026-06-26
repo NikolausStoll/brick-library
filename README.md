@@ -5,6 +5,7 @@ Personal brick set tracker: manage a **Collection** and a **Wishlist** of sets, 
 ## Features
 
 - **Collection & Wishlist** – Tabs for owned sets and wishlist items; move items from wishlist to collection with purchase price.
+- **Kids Collection** – Optional separate tab for children's sets (name, number, pieces, images only). See [docs/KIDS_COLLECTION.md](docs/KIDS_COLLECTION.md).
 - **Set management** – Add/edit/delete sets; fields: manufacturer, name, set number, piece count, purchase price (or price-per-piece for wishlist), status, brick size, and optional details (box, instructions URL, theme, year, etc.).
 - **Status cycle** – Click the status badge on a card to cycle: New → Building → Built → Disassembled → Sold.
 - **Images** – Upload (file), add by image URL, or paste HTML to scrape multiple images; images are optimized (WebP, max dimension, configurable quality) and can be reordered or deleted.
@@ -63,6 +64,7 @@ brick-library/
 - `GET/POST /api/sets` – List sets, create set
 - `GET/PUT/DELETE /api/sets/:id` – Get, update, delete set
 - `PUT /api/sets/:id/move` – Move set between collection/wishlist (body: `listType`, optional `purchasePrice`)
+- `GET/POST /api/kids/sets` – Kids collection (separate module; see [docs/KIDS_COLLECTION.md](docs/KIDS_COLLECTION.md))
 - `GET/POST/DELETE /api/sets/:setId/images` – List images, upload files
 - `POST /api/sets/:setId/images/url` – Add one image from URL (body: `imageUrl`)
 - `POST /api/sets/:setId/images/scrape` – Scrape images from pasted HTML (body: `rawHtml`, optional `baseUrl`)

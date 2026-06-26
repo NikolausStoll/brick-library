@@ -12,7 +12,14 @@
         :class="{ active: activeTab === 'wishlist' }"
         @click="activeTab = 'wishlist'"
       >Wishlist</button>
+      <button
+        type="button"
+        :class="{ active: activeTab === 'kids' }"
+        @click="activeTab = 'kids'"
+      >Kids</button>
     </nav>
+    <KidsApp v-if="activeTab === 'kids'" />
+    <template v-else>
     <section class="card controls-card">
       <div class="controls-bar">
         <div class="chip-group">
@@ -293,7 +300,7 @@
           <span>Price</span>
           <span>Pieces</span>
           <span>Price per Piece</span>
-          <span>Status</span>
+          <span class="set-list-header-status">Status</span>
         </div>
         <article
           v-for="set in filteredSets"
@@ -368,6 +375,8 @@
         </article>
       </div>
     </section>
+
+    </template>
 
   </section>
 
@@ -786,6 +795,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import configText from '../../brick-library/config.yaml?raw';
+import KidsApp from './kids/KidsApp.vue';
 
 type SetStatus = 'New' | 'Building' | 'Built' | 'Disassembled' | 'Sold';
 
@@ -810,7 +820,7 @@ type BrickSet = {
   listType: 'collection' | 'wishlist';
 };
 
-type ListType = 'collection' | 'wishlist';
+type ListType = 'collection' | 'wishlist' | 'kids';
 
 const statuses: SetStatus[] = ['New', 'Building', 'Built', 'Disassembled', 'Sold'];
 const brickSizes = ['Diamond', 'Mini', 'Standard'];
@@ -2459,7 +2469,7 @@ onMounted(async () => {
 
 .set-list-header {
   display: grid;
-  grid-template-columns: 48px 2fr 0.85fr 1fr 1fr 0.85fr 0.75fr 1fr auto;
+  grid-template-columns: 48px 2fr 0.85fr 1fr 1fr 0.85fr 0.75fr 1fr 7rem;
   gap: 0.75rem;
   align-items: center;
   padding: 0.35rem 0.75rem 0.5rem;
@@ -3379,7 +3389,7 @@ onMounted(async () => {
   }
 
   .set-list-row {
-    grid-template-columns: 48px 2fr 0.85fr 1fr 1fr 0.85fr 0.75fr 1fr auto;
+    grid-template-columns: 48px 2fr 0.85fr 1fr 1fr 0.85fr 0.75fr 1fr 7rem;
     grid-template-rows: auto;
     gap: 0.75rem;
     padding: 0.5rem 0.75rem;
@@ -3409,6 +3419,22 @@ onMounted(async () => {
 
   .set-list-col--status {
     justify-self: end;
+    min-width: 0;
+    text-align: right;
+  }
+
+  .set-list-header-status {
+    justify-self: end;
+    text-align: right;
+  }
+
+  .set-list-col--status .set-card__status {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
   }
 
   .set-list-mobile-lines {

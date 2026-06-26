@@ -16,6 +16,7 @@ Help the user iterate on the **Brick Library** tracker: a personal app to manage
 
 - **Sets:** Stored in a `sets` table. Preserve the **schema and naming** from the user’s brief (e.g. `manufacturer`, `setName`, `setNumber`, `legoReferenceNumber`, `brickSize`, `purchasePrice` in cents, `pieceCount`, `status`, `hasOriginalBox`, `hasPrintedPhoto`, `notes`, `instructionsUrl`, `retiredProduct`, `theme`, `year`, `listType`, timestamps). Use internal **set id** (integer) in API paths and DB; use **setNumber** only for display.
 - **List types:** `listType` is either `'collection'` or `'wishlist'`. Filtering and tabs in the UI are based on this.
+- **Kids Collection (optional module):** Separate from `listType`; see [docs/KIDS_COLLECTION.md](docs/KIDS_COLLECTION.md) for scope and removal guide.
 - **Prices:** Backend stores `purchasePrice` in **cents** (integer). API responses use euros (decimal). When building payloads for PUT/PATCH, merge with **API-format** data (e.g. `mapRow(current)`) before calling `preparePayload` so prices are not double-converted (see backend PUT and move handlers).
 - **Images:** Stored in `set_images`; files under `UPLOAD_DIR/<setId>/`. Support upload (file), single URL, and scrape-from-HTML. Optimize with Sharp (WebP, max dimension, quality from env).
 

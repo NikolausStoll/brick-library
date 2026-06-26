@@ -8,6 +8,8 @@ import path from 'path';
 import multer from 'multer';
 import sharp from 'sharp';
 import * as cheerio from 'cheerio';
+import { ensureKidsSchema } from './kids/kidsSchema.js';
+import { createKidsRouter } from './kids/kidsRoutes.js';
 
 dotenv.config({
   path: fileURLToPath(new URL('../../.env', import.meta.url))
@@ -167,6 +169,7 @@ const ensureSchema = () => {
 };
 
 ensureSchema();
+ensureKidsSchema(db);
 
 const BASE_COLUMNS = [
   'manufacturer',
@@ -797,6 +800,8 @@ app.post('/api/sets/:setId/images/scrape', ensureSetExists, async (req, res) => 
     images: created
   });
 });
+
+app.use('/api/kids', createKidsRouter({ db, uploadDir: UPLOAD_DIR }));
 
 const STATIC_DIR = process.env.STATIC_DIR || path.join(__dirname, '../../public');
 const hasStatic = fs.existsSync(path.join(STATIC_DIR, 'index.html'));
