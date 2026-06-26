@@ -10,6 +10,9 @@
     "install:all": "npm install --workspaces",
     "dev:backend": "npm --prefix backend run start",
     "dev:frontend": "npm --prefix frontend run dev",
-    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\""
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "test": "npm run test --workspaces --if-present",
+    "test:backend": "npm --prefix backend run test",
+    "test:frontend": "npm --prefix frontend run test"
   }
 }
