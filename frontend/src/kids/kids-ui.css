@@ -1591,8 +1591,6 @@
   }
 }
 
-</style>
-
 .kids-set-list-header,
 .kids-set-list-row { grid-template-columns: 48px 2fr 0.85fr 1fr 0.75fr 0.85fr; }
 .kids-stats-grid { grid-template-columns: repeat(2, 1fr); }
