@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
 
 vi.mock('../../brick-library/config.yaml?raw', () => ({
-  default: 'version: "1.3.0"\n'
+  default: 'version: "1.3.1"\n'
 }));
 
 type BrickSet = {
@@ -242,7 +242,7 @@ describe('App.vue', () => {
 
   it('shows app version from config', async () => {
     const wrapper = await mountApp();
-    expect(wrapper.find('.app-version').text()).toBe('v1.3.0');
+    expect(wrapper.find('.app-version').text()).toBe('v1.3.1');
   });
 
   it('persists dark mode preference in localStorage', async () => {
