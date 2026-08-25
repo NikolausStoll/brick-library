@@ -1,7 +1,7 @@
 name: "Brick Library"
 slug: "brick-library"
 description: "Personal brick set tracker frontend and backend"
-version: "1.3.2"
+version: "1.3.3"
 url: "https://github.com/NikolausStoll/brick-library"
 
 arch:
