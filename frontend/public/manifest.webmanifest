@@ -2,17 +2,18 @@
   "name": "Brick Library",
   "short_name": "Bricks",
   "description": "Personal brick library.",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "display_override": ["fullscreen", "standalone"],
   "theme_color": "#ffffff",
   "background_color": "#ffffff",
   "icons": [
     {
-      "src": "/favicon.png",
+      "src": "./favicon.png",
+      "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "any maskable"
     }
   ]
 }
