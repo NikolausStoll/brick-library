@@ -18,7 +18,7 @@
         @click="activeTab = 'kids'"
       >Kids</button>
     </nav>
-    <KidsApp v-if="activeTab === 'kids'" />
+    <KidsApp v-if="activeTab === 'kids'" ref="kidsAppRef" />
     <template v-else>
 
     <!-- Mobile: search + filter row -->
@@ -379,7 +379,7 @@
 
   <div
     v-if="isFormOverlayVisible"
-    class="overlay"
+    class="overlay form-overlay"
     role="dialog"
     aria-modal="true"
     @click.self="closeFormOverlay"
@@ -387,10 +387,13 @@
     tabindex="-1"
     ref="formOverlayRef"
   >
-    <form class="card form-card overlay-card" @submit.prevent="saveSet">
-      <div class="overlay-header">
-        <h2>{{ isEditing ? 'Edit set' : activeTab === 'wishlist' ? 'Add to wishlist' : 'Add a set' }}</h2>
-        <div class="overlay-header__actions">
+    <form class="form-card" @submit.prevent="saveSet">
+
+      <!-- Sticky top bar: close / title / save -->
+      <div class="form-topbar">
+        <button type="button" class="icon-button form-topbar-close" aria-label="Close form" @click="closeFormOverlay">&times;</button>
+        <span class="form-topbar-title">{{ isEditing ? 'Edit set' : activeTab === 'wishlist' ? 'Add to wishlist' : 'Add set' }}</span>
+        <div class="form-topbar-end">
           <button
             v-if="isEditing && editingSet?.listType === 'wishlist'"
             type="button"
@@ -399,152 +402,163 @@
             title="Move to Collection"
             @click="openMoveOverlay"
           >&#10132;</button>
-          <button
-            type="button"
-            class="icon-button"
-            aria-label="Close form"
-            @click="closeFormOverlay"
-          >
-            &times;
+          <button type="submit" class="form-topbar-save" :disabled="submitting">
+            {{ submitting ? '…' : isEditing ? 'Save' : 'Add' }}
           </button>
         </div>
       </div>
-      <div v-if="isEditing && editingSet?.listType !== 'wishlist'" class="form-tabs">
-        <button
-          type="button"
-          class="tab-button"
-          :class="{ active: editTab === 'general' }"
-          @click="editTab = 'general'"
-        >General</button>
-        <button
-          type="button"
-          class="tab-button"
-          :class="{ active: editTab === 'details' }"
-          @click="editTab = 'details'"
-        >Details</button>
-      </div>
-      <div v-show="!isEditing || editTab === 'general'" class="form-grid">
-        <label>
-          Manufacturer
-          <input
-            v-model="form.manufacturer"
-            type="text"
-            required
-            list="manufacturer-options"
-            placeholder="LEGO"
-          />
-          <datalist id="manufacturer-options">
-            <option v-for="manufacturer in manufacturers" :key="manufacturer" :value="manufacturer" />
-          </datalist>
-        </label>
-        <label>
-          Set name
-          <input v-model="form.setName" type="text" required placeholder="Millennium Falcon" />
-        </label>
-        <label>
-          Set number
-          <input v-model="form.setNumber" type="text" placeholder="75192" />
-        </label>
-        <label>
-          LEGO reference number
-          <input v-model="form.legoReferenceNumber" type="text" placeholder="21348" />
-        </label>
-        <label>
-          Status
-          <select v-model="form.status">
-            <option v-for="status in statuses" :key="status" :value="status">
-              {{ status }}
-            </option>
-          </select>
-        </label>
-        <label>
-          Brick size
-          <select v-model="form.brickSize">
-            <option v-for="size in brickSizes" :key="size" :value="size">
-              {{ size }}
-            </option>
-          </select>
-        </label>
-        <label v-if="activeTab === 'collection' && !isEditing || isEditing && editingSet?.listType !== 'wishlist'">
-          Purchase price (EUR)
-          <input
-            v-model="form.purchasePrice"
-            type="text"
-            inputmode="decimal"
-            placeholder="199,99"
-            @input="handleDecimalInput('purchasePrice', ($event.target as HTMLInputElement).value)"
-          />
-        </label>
-        <label>
-          Piece count
-          <input v-model="form.pieceCount" type="number" min="0" placeholder="7541" />
-        </label>
-        <label v-if="activeTab === 'wishlist' || (isEditing && editingSet?.listType === 'wishlist')">
-          Price per piece (EUR)
-          <input
-            v-model="form.pricePerPiece"
-            type="text"
-            inputmode="decimal"
-            placeholder="0,05"
-            @input="handleDecimalInput('pricePerPiece', ($event.target as HTMLInputElement).value)"
-          />
-        </label>
-      </div>
-      <div v-if="isEditing && editingSet?.listType !== 'wishlist'" v-show="editTab === 'details'" class="form-grid">
-        <label class="toggle-label">
-          Has original box
-          <label class="toggle-switch">
-            <input v-model="form.hasOriginalBox" type="checkbox" />
-            <span class="toggle-slider"></span>
+
+      <!-- Scrollable body -->
+      <div class="form-body">
+
+        <!-- Edit context: compact set identity -->
+        <div v-if="isEditing && editingSet" class="form-set-context">
+          <div class="form-set-context__thumb">
+            <img
+              v-if="getCurrentImage(editingId)"
+              :src="getCurrentImage(editingId)?.thumbUrl || getCurrentImage(editingId)?.url"
+              :data-fallback="getCurrentImage(editingId)?.url"
+              :alt="editingSet.setName"
+              @error="(e) => { const t = (e.target as HTMLImageElement); const fb = t.dataset.fallback; if (fb) t.src = fb; }"
+            />
+            <span v-else class="form-set-context__thumb-empty" aria-hidden="true">&#9638;</span>
+          </div>
+          <div class="form-set-context__info">
+            <p class="form-set-context__name">{{ editingSet.setName }}</p>
+            <p class="form-set-context__meta">{{ editingSet.manufacturer }}<template v-if="editingSet.setNumber || editingSet.legoReferenceNumber"> · {{ formatSetNumber(editingSet) }}</template></p>
+          </div>
+        </div>
+
+        <!-- Segmented tabs (edit, non-wishlist only) -->
+        <div v-if="isEditing && editingSet?.listType !== 'wishlist'" class="form-segment-tabs">
+          <button type="button" :class="{ active: editTab === 'general' }" @click="editTab = 'general'">General</button>
+          <button type="button" :class="{ active: editTab === 'details' }" @click="editTab = 'details'">Details</button>
+        </div>
+
+        <!-- GENERAL fields -->
+        <div v-show="!isEditing || editTab === 'general'" class="form-fields">
+          <label class="form-field form-field--full">
+            <span class="form-label">Manufacturer</span>
+            <input v-model="form.manufacturer" type="text" required list="manufacturer-options" placeholder="LEGO" />
+            <datalist id="manufacturer-options">
+              <option v-for="manufacturer in manufacturers" :key="manufacturer" :value="manufacturer" />
+            </datalist>
           </label>
-        </label>
-        <label class="toggle-label">
-          Has printed photo
-          <label class="toggle-switch">
-            <input v-model="form.hasPrintedPhoto" type="checkbox" />
-            <span class="toggle-slider"></span>
+          <label class="form-field form-field--full">
+            <span class="form-label">Set name</span>
+            <input v-model="form.setName" type="text" required placeholder="Millennium Falcon" />
           </label>
-        </label>
-        <label class="toggle-label">
-          Retired product
-          <label class="toggle-switch">
-            <input v-model="form.retiredProduct" type="checkbox" />
-            <span class="toggle-slider"></span>
+          <div class="form-row-pair">
+            <label class="form-field">
+              <span class="form-label">Set number</span>
+              <input v-model="form.setNumber" type="text" placeholder="75192" />
+            </label>
+            <label class="form-field">
+              <span class="form-label">LEGO reference</span>
+              <input v-model="form.legoReferenceNumber" type="text" placeholder="21348" />
+            </label>
+          </div>
+          <div class="form-row-pair">
+            <label class="form-field">
+              <span class="form-label">Status</span>
+              <select v-model="form.status">
+                <option v-for="status in statuses" :key="status" :value="status">{{ status }}</option>
+              </select>
+            </label>
+            <label class="form-field">
+              <span class="form-label">Brick size</span>
+              <select v-model="form.brickSize">
+                <option v-for="size in brickSizes" :key="size" :value="size">{{ size }}</option>
+              </select>
+            </label>
+          </div>
+          <!-- Collection: price + pieces -->
+          <div v-if="(activeTab === 'collection' && !isEditing) || (isEditing && editingSet?.listType !== 'wishlist')" class="form-row-pair">
+            <label class="form-field">
+              <span class="form-label">Purchase price (EUR)</span>
+              <input v-model="form.purchasePrice" type="text" inputmode="decimal" placeholder="199,99" @input="handleDecimalInput('purchasePrice', ($event.target as HTMLInputElement).value)" />
+            </label>
+            <label class="form-field">
+              <span class="form-label">Piece count</span>
+              <input v-model="form.pieceCount" type="number" min="0" placeholder="7541" />
+            </label>
+          </div>
+          <!-- Wishlist: pieces + price/piece -->
+          <div v-if="activeTab === 'wishlist' || (isEditing && editingSet?.listType === 'wishlist')" class="form-row-pair">
+            <label class="form-field">
+              <span class="form-label">Piece count</span>
+              <input v-model="form.pieceCount" type="number" min="0" placeholder="7541" />
+            </label>
+            <label class="form-field">
+              <span class="form-label">Price per piece (EUR)</span>
+              <input v-model="form.pricePerPiece" type="text" inputmode="decimal" placeholder="0,05" @input="handleDecimalInput('pricePerPiece', ($event.target as HTMLInputElement).value)" />
+            </label>
+          </div>
+        </div>
+
+        <!-- DETAILS fields (edit, non-wishlist only) -->
+        <div v-if="isEditing && editingSet?.listType !== 'wishlist'" v-show="editTab === 'details'" class="form-fields">
+          <div class="form-row-pair">
+            <div class="form-field form-field--toggle">
+              <span class="form-label">Original box</span>
+              <label class="toggle-switch">
+                <input v-model="form.hasOriginalBox" type="checkbox" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="form-field form-field--toggle">
+              <span class="form-label">Printed photo</span>
+              <label class="toggle-switch">
+                <input v-model="form.hasPrintedPhoto" type="checkbox" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+          <div class="form-field form-field--toggle">
+            <span class="form-label">Retired product</span>
+            <label class="toggle-switch">
+              <input v-model="form.retiredProduct" type="checkbox" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="form-row-pair">
+            <label class="form-field">
+              <span class="form-label">Theme</span>
+              <input v-model="form.theme" type="text" placeholder="Star Wars" list="theme-options" />
+              <datalist id="theme-options">
+                <option v-for="theme in activeThemes" :key="theme" :value="theme" />
+              </datalist>
+            </label>
+            <label class="form-field">
+              <span class="form-label">Year</span>
+              <input v-model="form.year" type="number" min="1900" max="2100" placeholder="2024" />
+            </label>
+          </div>
+          <label class="form-field form-field--full">
+            <span class="form-label">Instructions URL</span>
+            <input v-model="form.instructionsUrl" type="url" placeholder="https://..." />
           </label>
-        </label>
-        <label>
-          Theme
-          <input v-model="form.theme" type="text" placeholder="Star Wars" list="theme-options" />
-          <datalist id="theme-options">
-            <option v-for="theme in activeThemes" :key="theme" :value="theme" />
-          </datalist>
-        </label>
-        <label>
-          Year
-          <input v-model="form.year" type="number" min="1900" max="2100" placeholder="2024" />
-        </label>
-        <label>
-          Instructions URL
-          <input v-model="form.instructionsUrl" type="url" placeholder="https://..." />
-        </label>
-        <label class="full-width">
-          Notes
-          <textarea v-model="form.notes" rows="3" placeholder="Any additional notes…"></textarea>
-        </label>
-      </div>
-      <div v-if="isEditing" class="form-actions-row">
-        <button type="submit" class="primary-button" :disabled="submitting">Update set</button>
-        <button
-          type="button"
-          class="delete-set-button"
-          :class="{ confirming: deleteSetConfirming }"
-          :disabled="deletingSet"
-          @click="deleteSet(editingId!)"
-        >
-          {{ deletingSet ? 'Deleting…' : deleteSetConfirming ? 'Are you sure?' : 'Delete set' }}
-        </button>
-      </div>
-      <button v-if="!isEditing" type="submit" class="primary-button" :disabled="submitting">Save set</button>
+          <label class="form-field form-field--full">
+            <span class="form-label">Notes</span>
+            <textarea v-model="form.notes" rows="3" placeholder="Any additional notes…"></textarea>
+          </label>
+        </div>
+
+        <!-- Delete (edit mode only) — visually secondary, at the bottom -->
+        <div v-if="isEditing" class="form-delete-zone">
+          <hr class="form-delete-divider" />
+          <button
+            type="button"
+            class="form-delete-btn"
+            :class="{ confirming: deleteSetConfirming }"
+            :disabled="deletingSet"
+            @click="deleteSet(editingId!)"
+          >
+            {{ deletingSet ? 'Deleting…' : deleteSetConfirming ? 'Are you sure?' : 'Delete set' }}
+          </button>
+        </div>
+
+      </div><!-- /form-body -->
     </form>
   </div>
   <div
@@ -780,15 +794,6 @@
       <p v-else class="image-gallery-empty">No images uploaded yet.</p>
     </div>
   </div>
-  <!-- Mobile FAB -->
-  <button
-    v-if="isMobileLayout"
-    type="button"
-    class="mobile-fab"
-    @click="openAddForm"
-    :aria-label="activeTab === 'wishlist' ? 'Add to wishlist' : 'Add set'"
-  >+</button>
-
   <!-- Mobile filter drawer -->
   <div
     v-if="mobileFilterDrawerOpen"
@@ -957,6 +962,52 @@
     </div>
   </div>
 
+  <!-- Mobile sticky bottom navigation -->
+  <nav class="mobile-bottom-nav" aria-label="Navigation">
+    <button
+      type="button"
+      class="mobile-nav-item"
+      :class="{ active: activeTab === 'collection' }"
+      @click="activeTab = 'collection'"
+    >
+      <span class="mobile-nav-icon" aria-hidden="true">&#9638;</span>
+      <span class="mobile-nav-label">Collection</span>
+    </button>
+    <button
+      type="button"
+      class="mobile-nav-item"
+      :class="{ active: activeTab === 'wishlist' }"
+      @click="activeTab = 'wishlist'"
+    >
+      <span class="mobile-nav-icon" aria-hidden="true">&#9825;</span>
+      <span class="mobile-nav-label">Wishlist</span>
+    </button>
+    <button
+      type="button"
+      class="mobile-nav-add"
+      @click="handleBottomNavAdd"
+      :aria-label="activeTab === 'wishlist' ? 'Add to wishlist' : activeTab === 'kids' ? 'Add kids set' : 'Add set'"
+    >+</button>
+    <button
+      type="button"
+      class="mobile-nav-item"
+      :class="{ active: activeTab === 'kids' }"
+      @click="activeTab = 'kids'"
+    >
+      <span class="mobile-nav-icon" aria-hidden="true">&#9671;</span>
+      <span class="mobile-nav-label">Kids</span>
+    </button>
+    <button
+      type="button"
+      class="mobile-nav-item"
+      @click="toggleDarkMode"
+      :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+    >
+      <span class="mobile-nav-icon">{{ isDark ? '☀️' : '🌙' }}</span>
+      <span class="mobile-nav-label">{{ isDark ? 'Hell' : 'Dunkel' }}</span>
+    </button>
+  </nav>
+
   <div class="app-footer">
     <span class="app-version">v{{ appVersion }}</span>
     <button type="button" class="dark-mode-toggle" @click="toggleDarkMode" :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'">
@@ -970,6 +1021,16 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import configText from '../../brick-library/config.yaml?raw';
 import KidsApp from './kids/KidsApp.vue';
+
+const kidsAppRef = ref<InstanceType<typeof KidsApp> | null>(null);
+
+const handleBottomNavAdd = () => {
+  if (activeTab.value === 'kids') {
+    kidsAppRef.value?.openAddForm?.();
+  } else {
+    openAddForm();
+  }
+};
 
 type SetStatus = 'New' | 'Building' | 'Built' | 'Disassembled' | 'Sold';
 
@@ -4756,6 +4817,440 @@ onMounted(async () => {
 @media (min-width: 1650px) {
   .set-grid {
     grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+/* ── Add/Edit Form redesign ───────────────────────────────── */
+
+.form-overlay {
+  padding: 1.5rem;
+}
+
+.form-card {
+  background: var(--bg-card);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-card);
+  width: min(500px, 100%);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Top bar */
+.form-topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.85rem 0.6rem 0.65rem;
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.form-topbar-close {
+  flex-shrink: 0;
+}
+
+.form-topbar-title {
+  flex: 1;
+  font-size: 0.92rem;
+  font-weight: 700;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.form-topbar-end {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.form-topbar-save {
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  letter-spacing: 0.01em;
+}
+
+.form-topbar-save:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.form-topbar-save:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.form-topbar-save:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Scrollable body */
+.form-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.25rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+/* Set context (edit mode) */
+.form-set-context {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.65rem;
+  background: var(--bg-elevated);
+  border-radius: 0.6rem;
+  border: 1px solid var(--border-light);
+}
+
+.form-set-context__thumb {
+  width: 4rem;
+  height: 4rem;
+  border-radius: 0.4rem;
+  overflow: hidden;
+  background: var(--bg-inset);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-light);
+}
+
+.form-set-context__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.form-set-context__thumb-empty {
+  font-size: 1rem;
+  color: var(--text-muted);
+}
+
+.form-set-context__info {
+  min-width: 0;
+  flex: 1;
+}
+
+.form-set-context__name {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.form-set-context__meta {
+  margin: 0.1rem 0 0;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+/* Segmented tabs */
+.form-segment-tabs {
+  display: flex;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-medium);
+  border-radius: 0.6rem;
+  overflow: hidden;
+  padding: 0.2rem;
+  gap: 0.2rem;
+}
+
+.form-segment-tabs button {
+  flex: 1;
+  padding: 0.38rem 0.75rem;
+  border: none;
+  border-radius: 0.4rem;
+  background: transparent;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.form-segment-tabs button.active {
+  background: var(--bg-surface);
+  color: var(--accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Field layout */
+.form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.form-row-pair {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.6rem;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.form-field--full {
+  grid-column: 1 / -1;
+}
+
+.form-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea {
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--border-input);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  font-family: inherit;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.form-field select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2394a3b8'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  padding-right: 1.75rem;
+}
+
+.form-field input:focus,
+.form-field select:focus,
+.form-field textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.form-field textarea {
+  resize: vertical;
+  min-height: 5rem;
+}
+
+/* Toggle fields */
+.form-field--toggle {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0.7rem;
+  background: var(--bg-elevated);
+  border-radius: 0.55rem;
+  border: 1px solid var(--border-light);
+  gap: 0.5rem;
+}
+
+.form-field--toggle .form-label {
+  margin: 0;
+}
+
+/* Delete zone — visually secondary */
+.form-delete-zone {
+  padding-top: 0.5rem;
+}
+
+.form-delete-divider {
+  border: none;
+  border-top: 1px solid var(--border-light);
+  margin: 0 0 0.75rem;
+}
+
+.form-delete-btn {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--color-danger);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.5rem 0;
+  text-align: center;
+  opacity: 0.65;
+  transition: opacity 0.15s, background 0.15s;
+  border-radius: 0.5rem;
+}
+
+.form-delete-btn:hover {
+  opacity: 1;
+  background: var(--bg-danger-soft);
+  padding: 0.5rem;
+}
+
+.form-delete-btn.confirming {
+  opacity: 1;
+  background: var(--color-danger);
+  color: #fff;
+  padding: 0.5rem;
+  font-weight: 700;
+}
+
+.form-delete-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Mobile: full-screen form */
+@media (max-width: 768px) {
+  .form-overlay {
+    padding: 0;
+    align-items: flex-start;
+  }
+
+  .form-card {
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+    border-radius: 0;
+    max-height: none;
+  }
+
+  .form-body {
+    padding-bottom: env(safe-area-inset-bottom, 1.25rem);
+  }
+
+  @media (max-width: 360px) {
+    .form-row-pair {
+      grid-template-columns: 1fr;
+    }
+  }
+}
+
+/* ── Mobile bottom navigation ─────────────────────────────── */
+
+.mobile-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Hide top tabs on mobile — replaced by bottom nav */
+  .page-tabs {
+    display: none;
+  }
+
+  /* More bottom padding to clear the bottom nav */
+  .page {
+    padding-bottom: 5rem;
+  }
+
+  /* App footer: raise above bottom nav, hide dark toggle (it's in nav) */
+  .app-footer {
+    bottom: 4.5rem;
+  }
+
+  .dark-mode-toggle {
+    display: none;
+  }
+
+  /* Mobile FAB: now replaced by bottom nav + button */
+  .mobile-fab {
+    display: none !important;
+  }
+
+  /* Bottom nav */
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3.75rem;
+    background: var(--bg-card);
+    border-top: 1px solid var(--border-light);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+    z-index: 25;
+    align-items: stretch;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  .mobile-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0.3rem 0;
+    transition: color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-nav-item.active {
+    color: var(--accent);
+  }
+
+  .mobile-nav-icon {
+    font-size: 1.05rem;
+    line-height: 1;
+    display: block;
+  }
+
+  .mobile-nav-label {
+    font-size: 0.55rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    line-height: 1;
+  }
+
+  .mobile-nav-add {
+    flex-shrink: 0;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 3px 12px rgba(233, 111, 20, 0.45);
+    align-self: center;
+    margin: 0 0.25rem;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.15s;
+  }
+
+  .mobile-nav-add:active {
+    transform: scale(0.91);
   }
 }
 

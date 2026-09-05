@@ -245,8 +245,7 @@
       </div>
     </section>
 
-    <!-- Mobile FAB -->
-    <button v-if="isMobileLayout" type="button" class="mobile-fab" @click="openAddForm" aria-label="Add set">+</button>
+    <!-- Mobile FAB handled by App.vue bottom nav -->
 
     <!-- Mobile detail sheet -->
     <div
@@ -908,6 +907,8 @@ const deleteAllImages = async () => {
   } catch (error) { console.error(error); }
   finally { deletingAllImages.value = false; }
 };
+
+defineExpose({ openAddForm });
 
 onMounted(() => {
   window.addEventListener('resize', updateIsMobileLayout);
