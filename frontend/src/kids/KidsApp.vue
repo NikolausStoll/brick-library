@@ -1,193 +1,210 @@
 <template>
   <div class="kids-root">
   <section class="kids-content content-grid">
-    <section class="card controls-card">
-      <div class="controls-bar">
-        <div class="chip-group">
-          <span class="controls-label">Sort</span>
-          <div class="sort-chips">
-            <button
-              v-for="option in sortOptions"
-              :key="option.key"
-              type="button"
-              class="chip sort-chip"
-              :class="{ active: sortField === option.key }"
-              @click="setSortField(option.key)"
-            >
-              <span>{{ option.label }}</span>
-              <span class="sort-direction">
-                {{ sortField === option.key ? (sortDirection === 'asc' ? '▲' : '▼') : '' }}
-              </span>
-            </button>
-          </div>
-        </div>
-        <div class="chip-group layout-switcher">
-          <span class="controls-label">Layout</span>
-          <div class="layout-switcher-buttons">
-            <button
-              type="button"
-              class="chip layout-chip"
-              :class="{ active: layoutMode === 'card' }"
-              @click="layoutMode = 'card'"
-            >Cards</button>
-            <button
-              type="button"
-              class="chip layout-chip"
-              :class="{ active: layoutMode === 'list' }"
-              @click="layoutMode = 'list'"
-            >List</button>
-          </div>
-        </div>
-        <button type="button" class="chip reset-chip" @click="resetSort">Reset</button>
-      </div>
-    </section>
 
-    <section v-if="sortedSets.length > 0" class="card stats-card">
-      <dl class="stats-grid kids-stats-grid">
-        <div>
-          <dt>Total Sets</dt>
-          <dd>{{ sortedSets.length }}</dd>
+    <!-- Mobile: search + sort row -->
+    <div v-if="isMobileLayout" class="mobile-top-bar">
+      <div class="mobile-search-wrap">
+        <input
+          v-model="searchQuery"
+          type="search"
+          class="mobile-search-input"
+          placeholder="Search sets…"
+          autocomplete="off"
+        />
+        <span class="mobile-search-icon" aria-hidden="true">&#128269;</span>
+      </div>
+      <div class="kids-sort-anchor" ref="mobileSortRef">
+        <button
+          type="button"
+          class="mobile-filter-btn"
+          :class="{ active: sortField !== 'setName' || sortDirection !== 'asc' }"
+          @click="mobileSortOpen = !mobileSortOpen"
+        >
+          Sort {{ sortDirection === 'asc' ? '↑' : '↓' }}
+        </button>
+        <div v-if="mobileSortOpen" class="kids-sort-panel">
+          <button
+            v-for="option in sortOptions"
+            :key="option.key"
+            type="button"
+            class="kids-sort-option"
+            :class="{ active: sortField === option.key }"
+            @click="setSortField(option.key); mobileSortOpen = false"
+          >
+            {{ option.label }}<span v-if="sortField === option.key"> {{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
+          </button>
         </div>
-        <div>
-          <dt>Total Pieces</dt>
-          <dd>{{ totalPieces?.toLocaleString() ?? '—' }}</dd>
+      </div>
+    </div>
+
+    <!-- Mobile: summary + layout switcher -->
+    <div v-if="isMobileLayout" class="mobile-summary-bar">
+      <span class="mobile-summary-text">
+        {{ displayedSets.length }} Sets<template v-if="totalPieces !== null"> · {{ totalPieces.toLocaleString() }} Steine</template>
+      </span>
+      <div class="mobile-layout-switcher">
+        <button type="button" class="mobile-layout-btn" :class="{ active: layoutMode === 'card' }" @click="layoutMode = 'card'" aria-label="Gallery view">&#9638;</button>
+        <button type="button" class="mobile-layout-btn" :class="{ active: layoutMode === 'list' }" @click="layoutMode = 'list'" aria-label="List view">&#8801;</button>
+      </div>
+    </div>
+
+    <!-- Desktop toolbar -->
+    <div v-if="!isMobileLayout" class="desktop-toolbar">
+      <div class="toolbar-search-wrap">
+        <span class="toolbar-search-icon" aria-hidden="true">&#128269;</span>
+        <input
+          v-model="searchQuery"
+          type="search"
+          class="toolbar-search-input"
+          placeholder="Search sets…"
+          autocomplete="off"
+        />
+      </div>
+      <div class="kids-sort-anchor" ref="sortPopoverRef">
+        <button
+          type="button"
+          class="toolbar-btn toolbar-sort-btn"
+          @click="desktopSortPanelOpen = !desktopSortPanelOpen"
+        >
+          Sort: {{ currentSortLabel }}&thinsp;<span class="sort-dir-arrow">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
+        </button>
+        <div v-if="desktopSortPanelOpen" class="kids-sort-panel">
+          <button
+            v-for="option in sortOptions"
+            :key="option.key"
+            type="button"
+            class="kids-sort-option"
+            :class="{ active: sortField === option.key }"
+            @click="setSortField(option.key); desktopSortPanelOpen = false"
+          >
+            {{ option.label }}<span v-if="sortField === option.key" class="sort-dir-arrow"> {{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
+          </button>
         </div>
-      </dl>
-    </section>
+      </div>
+      <div class="toolbar-layout-switcher">
+        <button type="button" class="toolbar-layout-btn" :class="{ active: layoutMode === 'card' }" @click="layoutMode = 'card'" aria-label="Gallery view">&#9638;</button>
+        <button type="button" class="toolbar-layout-btn" :class="{ active: layoutMode === 'list' }" @click="layoutMode = 'list'" aria-label="List view">&#8801;</button>
+      </div>
+      <button type="button" class="toolbar-add-btn" @click="openAddForm">+ Add Set</button>
+    </div>
+
+    <!-- Desktop compact stats row -->
+    <div v-if="!isMobileLayout && displayedSets.length > 0" class="desktop-stats-row">
+      <span>{{ displayedSets.length }} Sets</span>
+      <template v-if="totalPieces !== null">
+        <span class="desktop-stats-sep">·</span>
+        <span>{{ totalPieces.toLocaleString() }} pieces</span>
+      </template>
+    </div>
 
     <section class="card list-card">
-      <button
-        v-if="isMobileLayout"
-        type="button"
-        class="add-set-bar-button"
-        @click="openAddForm"
-      >Add set</button>
-      <button
-        v-else
-        type="button"
-        class="add-button"
-        aria-label="Add set"
-        @click="openAddForm"
-      >+</button>
-
-      <div v-if="sortedSets.length === 0" class="empty">
+      <div v-if="displayedSets.length === 0" class="empty">
         {{ sets.length === 0 ? 'No kids sets yet.' : 'No sets match the search.' }}
       </div>
 
-      <div v-else-if="layoutMode === 'card'" class="set-grid">
-        <article
-          v-for="set in sortedSets"
-          :key="set.id"
-          class="set-card"
-          @click="startEditing(set)"
-        >
-          <div class="set-card__layout">
+      <template v-else-if="layoutMode === 'card'">
+        <!-- Mobile gallery -->
+        <div v-if="isMobileLayout" class="mobile-gallery-grid">
+          <button
+            v-for="set in displayedSets"
+            :key="set.id"
+            type="button"
+            class="mobile-gallery-item"
+            @click="openMobileDetail(set)"
+          >
+            <div class="mobile-gallery-img-wrap">
+              <img
+                v-if="getCurrentImage(set.id)"
+                :src="getCurrentImage(set.id)!.thumbUrl || getCurrentImage(set.id)!.url"
+                :data-fallback="getCurrentImage(set.id)!.url"
+                :alt="set.setName"
+                class="mobile-gallery-img"
+                loading="lazy"
+                @error="onImageError"
+              />
+              <div v-else class="mobile-gallery-img-empty"></div>
+            </div>
+            <p class="mobile-gallery-name">{{ set.setName }}</p>
+          </button>
+        </div>
+
+        <!-- Desktop gallery -->
+        <div v-else class="set-grid">
+          <article
+            v-for="set in displayedSets"
+            :key="set.id"
+            class="set-card"
+            @click="startEditing(set)"
+          >
             <div class="set-card__image-panel" @click.stop>
               <div v-if="getImagesForSet(set.id).length" class="set-card__image-wrapper">
                 <img
                   :src="getCurrentImage(set.id)?.thumbUrl || getCurrentImage(set.id)?.url"
                   :data-fallback="getCurrentImage(set.id)?.url"
-                  :alt="`Image preview for ${set.setName}`"
+                  :alt="set.setName"
                   class="set-card__image"
                   loading="lazy"
                   @click="openImageViewer(set.id)"
                   @error="onImageError"
                 />
                 <div v-if="getImagesForSet(set.id).length > 1" class="set-card__image-controls">
-                  <button
-                    type="button"
-                    class="carousel-button"
-                    @click.stop="showPreviousImage(set.id)"
-                    aria-label="Show previous image"
-                  >&#8249;</button>
-                  <button
-                    type="button"
-                    class="carousel-button"
-                    @click.stop="showNextImage(set.id)"
-                    aria-label="Show next image"
-                  >&#8250;</button>
+                  <button type="button" class="carousel-button" @click.stop="showPreviousImage(set.id)" aria-label="Show previous image">&#8249;</button>
+                  <button type="button" class="carousel-button" @click.stop="showNextImage(set.id)" aria-label="Show next image">&#8250;</button>
                 </div>
-                <button
-                  type="button"
-                  class="manage-images-gear"
-                  aria-label="Manage images"
-                  @click.stop="openImageManager(set.id)"
-                >
+                <button type="button" class="manage-images-gear" aria-label="Manage images" @click.stop="openImageManager(set.id)">
                   <span class="manage-images-gear__icon">&#9881;</span>
                 </button>
               </div>
               <div v-else class="set-card__image-empty">
                 <span>No images yet</span>
-                <button
-                  type="button"
-                  class="manage-images-gear"
-                  aria-label="Manage images"
-                  @click.stop="openImageManager(set.id)"
-                >
+                <button type="button" class="manage-images-gear" aria-label="Manage images" @click.stop="openImageManager(set.id)">
                   <span class="manage-images-gear__icon">&#9881;</span>
                 </button>
               </div>
             </div>
-
             <div class="set-card__details">
-              <div class="set-card__header">
-                <p class="set-card__manufacturer">{{ set.manufacturer }}</p>
-              </div>
               <p class="set-card__name">{{ set.setName }}</p>
-              <p v-if="set.setNumber" class="set-card__number">#{{ set.setNumber }}</p>
-              <dl class="set-card__meta">
-                <div>
-                  <dt>Price</dt>
-                  <dd>—</dd>
-                </div>
-                <div>
-                  <dt>Pieces</dt>
-                  <dd>{{ set.pieceCount ?? '—' }}</dd>
-                </div>
-                <div>
-                  <dt v-if="isMobileLayout">ct/piece</dt>
-                  <dt v-else>Piece Price</dt>
-                  <dd>—</dd>
-                </div>
-                <div>
-                  <dt v-if="isMobileLayout">Size</dt>
-                  <dt v-else>Brick Size</dt>
-                  <dd>{{ set.brickSize }}</dd>
-                </div>
-              </dl>
+              <p class="set-card__secondary">
+                <span class="set-card__manufacturer">{{ set.manufacturer }}</span>
+                <template v-if="set.setNumber">
+                  <span class="set-card__secondary-sep" aria-hidden="true"> · </span>
+                  <span class="set-card__number">#{{ set.setNumber }}</span>
+                </template>
+              </p>
+              <div class="set-card__data-row" v-if="set.pieceCount !== null">
+                <span class="set-card__data-item">{{ set.pieceCount?.toLocaleString() ?? '—' }}<span class="set-card__data-unit"> pcs</span></span>
+                <template v-if="set.brickSize">
+                  <span class="set-card__data-sep" aria-hidden="true">·</span>
+                  <span class="set-card__data-item">{{ set.brickSize }}</span>
+                </template>
+              </div>
               <div v-if="set.instructionsUrl" class="set-card__chips">
-                <a
-                  v-if="set.instructionsUrl"
-                  class="detail-chip detail-chip--instructions"
-                  :href="set.instructionsUrl"
-                  target="_blank"
-                  rel="noopener"
-                  @click.stop
-                >Instructions</a>
+                <a class="detail-chip detail-chip--instructions" :href="set.instructionsUrl" target="_blank" rel="noopener" @click.stop>Instructions</a>
               </div>
             </div>
-          </div>
-        </article>
-      </div>
+          </article>
+        </div>
+      </template>
 
-      <div v-else class="set-list kids-set-list" role="list">
+      <div v-else-if="layoutMode === 'list'" class="set-list kids-set-list" role="list">
         <div v-if="!isMobileLayout" class="set-list-header kids-set-list-header" aria-hidden="true">
           <span class="set-list-header-thumb"></span>
           <span>Name</span>
-          <span>Manufacturer</span>
-          <span>Set Number</span>
+          <span>Mfr.</span>
+          <span>Set #</span>
           <span>Pieces</span>
-          <span>Brick Size</span>
+          <span>Size</span>
         </div>
         <article
-          v-for="set in sortedSets"
+          v-for="set in displayedSets"
           :key="set.id"
           class="set-list-row kids-set-list-row"
           role="listitem"
           tabindex="0"
-          @click="startEditing(set)"
-          @keydown.enter="startEditing(set)"
-          @keydown.space.prevent="startEditing(set)"
+          @click="isMobileLayout ? openMobileDetail(set) : startEditing(set)"
+          @keydown.enter="isMobileLayout ? openMobileDetail(set) : startEditing(set)"
+          @keydown.space.prevent="isMobileLayout ? openMobileDetail(set) : startEditing(set)"
         >
           <div class="set-list-thumb" @click.stop="onListThumbClick(set)">
             <img
@@ -203,7 +220,7 @@
           <span class="set-list-col set-list-col--name set-list-col--desktop">{{ set.setName }}</span>
           <span class="set-list-col set-list-col--mfr set-list-col--desktop">{{ set.manufacturer }}</span>
           <span class="set-list-col set-list-col--desktop">{{ set.setNumber ?? '—' }}</span>
-          <span class="set-list-col set-list-col--desktop">{{ set.pieceCount ?? '—' }}</span>
+          <span class="set-list-col set-list-col--desktop">{{ set.pieceCount?.toLocaleString() ?? '—' }}</span>
           <span class="set-list-col set-list-col--desktop">{{ set.brickSize }}</span>
           <div class="set-list-mobile-lines">
             <div class="set-list-line set-list-line--primary">
@@ -218,7 +235,7 @@
                 </template>
               </div>
               <span class="set-list-line-right">
-                <span>{{ set.pieceCount ?? '—' }}</span>
+                <span>{{ set.pieceCount?.toLocaleString() ?? '—' }}</span>
                 <span class="set-list-line-right-sep" aria-hidden="true">·</span>
                 <span>{{ set.brickSize }}</span>
               </span>
@@ -228,6 +245,71 @@
       </div>
     </section>
 
+    <!-- Mobile FAB -->
+    <button v-if="isMobileLayout" type="button" class="mobile-fab" @click="openAddForm" aria-label="Add set">+</button>
+
+    <!-- Mobile detail sheet -->
+    <div
+      v-if="mobileDetailSet"
+      class="overlay mobile-detail-overlay"
+      role="dialog"
+      aria-modal="true"
+      @click.self="closeMobileDetail"
+      @keydown.esc="closeMobileDetail"
+      tabindex="-1"
+    >
+      <div class="mobile-detail-sheet">
+        <div class="mobile-detail-handle"></div>
+        <div class="mobile-detail-top">
+          <div class="mobile-detail-top-actions">
+            <button type="button" class="icon-button" aria-label="Edit set" @click="openMobileDetailEdit">&#9998;</button>
+            <button type="button" class="icon-button" aria-label="Close" @click="closeMobileDetail">&times;</button>
+          </div>
+        </div>
+        <div v-if="getImagesForSet(mobileDetailSet!.id).length" class="mobile-detail-image-area">
+          <img
+            :src="getCurrentImage(mobileDetailSet!.id)!.thumbUrl || getCurrentImage(mobileDetailSet!.id)!.url"
+            :data-fallback="getCurrentImage(mobileDetailSet!.id)!.url"
+            :alt="mobileDetailSet!.setName"
+            class="mobile-detail-main-image"
+            @click="openImageViewer(mobileDetailSet!.id)"
+            @error="onImageError"
+          />
+          <button type="button" class="manage-images-gear mobile-detail-img-gear" aria-label="Manage images" @click.stop="openMobileDetailImages">
+            <span class="manage-images-gear__icon">&#9881;</span>
+          </button>
+        </div>
+        <div v-else class="mobile-detail-image-empty">
+          <button type="button" class="manage-images-gear mobile-detail-img-gear mobile-detail-img-gear--empty" aria-label="Add images" @click.stop="openMobileDetailImages">
+            <span class="manage-images-gear__icon">&#9881;</span>
+          </button>
+          No images
+        </div>
+        <div class="mobile-detail-body">
+          <h2 class="mobile-detail-name">{{ mobileDetailSet!.setName }}</h2>
+          <p class="mobile-detail-manufacturer">{{ mobileDetailSet!.manufacturer }}</p>
+          <p v-if="mobileDetailSet!.setNumber" class="set-card__number">#{{ mobileDetailSet!.setNumber }}</p>
+          <dl class="mobile-detail-meta">
+            <div v-if="mobileDetailSet!.pieceCount !== null">
+              <dt>Pieces</dt>
+              <dd>{{ mobileDetailSet!.pieceCount!.toLocaleString() }}</dd>
+            </div>
+            <div v-if="mobileDetailSet!.brickSize">
+              <dt>Size</dt>
+              <dd>{{ mobileDetailSet!.brickSize }}</dd>
+            </div>
+          </dl>
+          <div v-if="mobileDetailSet!.instructionsUrl" class="set-card__chips">
+            <a class="detail-chip detail-chip--instructions" :href="mobileDetailSet!.instructionsUrl" target="_blank" rel="noopener" @click.stop>Instructions</a>
+          </div>
+          <div class="mobile-detail-actions">
+            <button type="button" class="primary-button mobile-detail-edit-btn" @click="openMobileDetailEdit">Edit Set</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Form overlay -->
     <div
       v-if="isFormOverlayVisible"
       class="overlay"
@@ -300,6 +382,7 @@
       </form>
     </div>
 
+    <!-- Image viewer overlay -->
     <div v-if="imageViewerSetId !== null" class="image-viewer-overlay" @click.self="closeImageViewer">
       <div class="image-viewer-content">
         <button type="button" class="icon-button image-viewer-close" @click="closeImageViewer">&times;</button>
@@ -319,6 +402,7 @@
       </div>
     </div>
 
+    <!-- Image manager overlay -->
     <div v-if="imageManagerSetId !== null" class="overlay" role="dialog" aria-modal="true" @click.self="closeImageManager">
       <div class="card overlay-card image-manager-card">
         <div class="overlay-header">
@@ -408,7 +492,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import {
   addKidsImageFromUrl,
   createKidsSet,
@@ -426,31 +510,15 @@ import type { KidsFormPayload, KidsSet, KidsSetImage } from './types';
 
 const brickSizes = ['Diamond', 'Mini', 'Standard'];
 const manufacturers = [
-  'CaDA',
-  'DAGAO',
-  'JIE-STAR',
-  'King',
-  'LEGO',
-  'Lezi',
-  'Loz',
-  'MEGA',
-  'MINISO',
-  'Mork',
-  'Mould King',
-  'Panlos',
-  'QLT',
-  'TGL',
-  'Wange',
-  'Unknown'
+  'CaDA', 'DAGAO', 'JIE-STAR', 'King', 'LEGO', 'Lezi', 'Loz', 'MEGA',
+  'MINISO', 'Mork', 'Mould King', 'Panlos', 'QLT', 'TGL', 'Wange', 'Unknown'
 ];
 
 type SortField = 'setName' | 'pieceCount';
 
 const MOBILE_BREAKPOINT = 768;
 const isMobileLayout = ref(typeof window !== 'undefined' ? window.innerWidth <= MOBILE_BREAKPOINT : false);
-const updateIsMobileLayout = () => {
-  isMobileLayout.value = window.innerWidth <= MOBILE_BREAKPOINT;
-};
+const updateIsMobileLayout = () => { isMobileLayout.value = window.innerWidth <= MOBILE_BREAKPOINT; };
 
 const sets = ref<KidsSet[]>([]);
 const setImages = reactive<Record<string, KidsSetImage[]>>({});
@@ -464,6 +532,13 @@ const sortOptions: Array<{ key: SortField; label: string }> = [
   { key: 'pieceCount', label: 'Pieces' }
 ];
 
+const searchQuery = ref('');
+const mobileSortOpen = ref(false);
+const desktopSortPanelOpen = ref(false);
+const mobileSortRef = ref<HTMLElement | null>(null);
+const sortPopoverRef = ref<HTMLElement | null>(null);
+const mobileDetailSetId = ref<string | null>(null);
+
 const sortedSets = computed(() => {
   const result = sets.value.slice();
   result.sort((a, b) => {
@@ -472,18 +547,34 @@ const sortedSets = computed(() => {
     const bValue = b[sortField.value];
     if (aValue === null || aValue === undefined) return 1 * direction;
     if (bValue === null || bValue === undefined) return -1 * direction;
-    if (sortField.value === 'setName') {
-      return String(aValue).localeCompare(String(bValue)) * direction;
-    }
+    if (sortField.value === 'setName') return String(aValue).localeCompare(String(bValue)) * direction;
     return (Number(aValue) - Number(bValue)) * direction;
   });
   return result;
 });
 
+const displayedSets = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase();
+  if (!q) return sortedSets.value;
+  return sortedSets.value.filter((s) =>
+    s.setName.toLowerCase().includes(q) ||
+    (s.setNumber?.toLowerCase().includes(q) ?? false) ||
+    s.manufacturer.toLowerCase().includes(q)
+  );
+});
+
 const totalPieces = computed(() => {
-  const total = sortedSets.value.reduce((sum, set) => sum + (set.pieceCount ?? 0), 0);
+  const total = displayedSets.value.reduce((sum, set) => sum + (set.pieceCount ?? 0), 0);
   return total > 0 ? total : null;
 });
+
+const currentSortLabel = computed(() =>
+  sortOptions.find((o) => o.key === sortField.value)?.label ?? String(sortField.value)
+);
+
+const mobileDetailSet = computed(() =>
+  mobileDetailSetId.value ? sets.value.find((s) => s.id === mobileDetailSetId.value) ?? null : null
+);
 
 const setSortField = (field: SortField) => {
   if (sortField.value === field) {
@@ -494,10 +585,34 @@ const setSortField = (field: SortField) => {
   sortDirection.value = 'asc';
 };
 
-const resetSort = () => {
-  sortField.value = 'setName';
-  sortDirection.value = 'asc';
+const openMobileDetail = (set: KidsSet) => { mobileDetailSetId.value = set.id; };
+const closeMobileDetail = () => { mobileDetailSetId.value = null; };
+const openMobileDetailEdit = () => {
+  const set = mobileDetailSet.value;
+  if (!set) return;
+  closeMobileDetail();
+  startEditing(set);
 };
+const openMobileDetailImages = () => {
+  const set = mobileDetailSet.value;
+  if (!set) return;
+  closeMobileDetail();
+  openImageManager(set.id);
+};
+
+const handleOutsideClick = (event: MouseEvent) => {
+  if (mobileSortRef.value && !mobileSortRef.value.contains(event.target as Node)) {
+    mobileSortOpen.value = false;
+  }
+  if (sortPopoverRef.value && !sortPopoverRef.value.contains(event.target as Node)) {
+    desktopSortPanelOpen.value = false;
+  }
+};
+
+watch([mobileSortOpen, desktopSortPanelOpen], ([m, d]) => {
+  if (m || d) document.addEventListener('mousedown', handleOutsideClick);
+  else document.removeEventListener('mousedown', handleOutsideClick);
+});
 
 const getImagesForSet = (setId: string) => setImages[setId] ?? [];
 const getImageIndex = (setId: string) => {
@@ -555,12 +670,7 @@ const refreshImages = async (setId: string) => {
 };
 
 const createEmptyForm = (): KidsFormPayload => ({
-  manufacturer: '',
-  setName: '',
-  setNumber: '',
-  pieceCount: '',
-  brickSize: 'Standard',
-  instructionsUrl: ''
+  manufacturer: '', setName: '', setNumber: '', pieceCount: '', brickSize: 'Standard', instructionsUrl: ''
 });
 const form = ref<KidsFormPayload>(createEmptyForm());
 const editingId = ref<string | null>(null);
@@ -719,11 +829,8 @@ const uploadImages = async () => {
     pendingFiles.value = [];
     uploadInputResetKey.value += 1;
     await refreshImages(imageManagerSetId.value);
-  } catch (error) {
-    console.error(error);
-  } finally {
-    imageUploading.value = false;
-  }
+  } catch (error) { console.error(error); }
+  finally { imageUploading.value = false; }
 };
 
 const uploadImageFromUrl = async () => {
@@ -736,9 +843,7 @@ const uploadImageFromUrl = async () => {
     await refreshImages(imageManagerSetId.value);
   } catch (error) {
     imageUrlError.value = error instanceof Error ? error.message : 'Upload failed';
-  } finally {
-    imageUrlUploading.value = false;
-  }
+  } finally { imageUrlUploading.value = false; }
 };
 
 const scrapeImages = async () => {
@@ -755,9 +860,7 @@ const scrapeImages = async () => {
     if (result.downloaded > 0) await refreshImages(imageManagerSetId.value);
   } catch (error) {
     scrapeError.value = error instanceof Error ? error.message : 'Scrape failed';
-  } finally {
-    scrapeLoading.value = false;
-  }
+  } finally { scrapeLoading.value = false; }
 };
 
 const moveImage = async (fromIndex: number, toIndex: number) => {
@@ -785,11 +888,8 @@ const deleteImage = async (imageId: string) => {
   try {
     await deleteKidsImage(imageManagerSetId.value, imageId);
     await refreshImages(imageManagerSetId.value);
-  } catch (error) {
-    console.error(error);
-  } finally {
-    imageDeleting[imageId] = false;
-  }
+  } catch (error) { console.error(error); }
+  finally { imageDeleting[imageId] = false; }
 };
 
 const deleteAllImages = async () => {
@@ -805,11 +905,8 @@ const deleteAllImages = async () => {
   try {
     await deleteAllKidsImages(imageManagerSetId.value);
     await refreshImages(imageManagerSetId.value);
-  } catch (error) {
-    console.error(error);
-  } finally {
-    deletingAllImages.value = false;
-  }
+  } catch (error) { console.error(error); }
+  finally { deletingAllImages.value = false; }
 };
 
 onMounted(() => {
@@ -820,6 +917,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateIsMobileLayout);
+  document.removeEventListener('mousedown', handleOutsideClick);
 });
 </script>
 
@@ -830,5 +928,631 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+/* ── Kids-specific list grid ── */
+.kids-set-list-header,
+.kids-set-list-row { grid-template-columns: 52px 2fr 0.8fr 0.8fr 0.75fr 0.75fr; }
+
+/* ── Shared toolbar / stats / mobile elements ─────────────── */
+
+/* Hide desktop-only elements on mobile */
+.desktop-toolbar,
+.desktop-stats-row {
+  display: none;
+}
+
+/* Hide mobile-only elements by default */
+.mobile-top-bar,
+.mobile-summary-bar,
+.mobile-fab,
+.mobile-gallery-grid {
+  display: none;
+}
+
+/* ── Mobile ─────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .list-card {
+    background: transparent;
+    box-shadow: none;
+    border: none;
+    padding: 0;
+  }
+
+  .mobile-top-bar {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0 0.1rem;
+  }
+
+  .mobile-search-wrap {
+    flex: 1;
+    position: relative;
+  }
+
+  .mobile-search-input {
+    width: 100%;
+    padding: 0.6rem 2.4rem 0.6rem 0.85rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-input);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    outline: none;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .mobile-search-input:focus { border-color: var(--accent); }
+
+  .mobile-search-icon {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    pointer-events: none;
+  }
+
+  .mobile-filter-btn {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.6rem 0.9rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-input);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .mobile-filter-btn.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .mobile-summary-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 0.25rem;
+  }
+
+  .mobile-summary-text {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .mobile-layout-switcher {
+    display: flex;
+    gap: 0.2rem;
+  }
+
+  .mobile-layout-btn {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.4rem;
+    border: 1px solid var(--border-default);
+    background: var(--bg-surface);
+    color: var(--text-tertiary);
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  .mobile-layout-btn.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .mobile-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.45rem;
+  }
+
+  .mobile-gallery-item {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-gallery-img-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: var(--bg-inset);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    border: 1px solid var(--border-light);
+  }
+
+  .mobile-gallery-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  .mobile-gallery-img-empty {
+    width: 100%;
+    height: 100%;
+    background: var(--bg-inset);
+  }
+
+  .mobile-gallery-name {
+    margin: 0;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    padding: 0 0.1rem 0.15rem;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.3;
+  }
+
+  .mobile-fab {
+    position: fixed;
+    bottom: 3.5rem;
+    right: 0.75rem;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    z-index: 20;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* ── Mobile detail sheet ──────────────────────────────── */
+.mobile-detail-overlay {
+  align-items: flex-end;
+  padding: 0;
+}
+
+.mobile-detail-sheet {
+  width: 100%;
+  max-height: 92vh;
+  background: var(--bg-card);
+  border-radius: 1.25rem 1.25rem 0 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-detail-handle {
+  width: 2.5rem;
+  height: 0.25rem;
+  background: var(--border-medium);
+  border-radius: 999px;
+  margin: 0.75rem auto 0.25rem;
+  flex-shrink: 0;
+}
+
+.mobile-detail-top {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.25rem 1rem 0.85rem;
+}
+
+.mobile-detail-top-actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.mobile-detail-image-area {
+  width: 100%;
+  max-height: 50vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-inset);
+  overflow: hidden;
+  position: relative;
+}
+
+.mobile-detail-main-image {
+  width: 100%;
+  max-height: 50vw;
+  object-fit: contain;
+  cursor: zoom-in;
+}
+
+.mobile-detail-img-gear {
+  opacity: 1 !important;
+}
+
+.mobile-detail-img-gear--empty {
+  position: static;
+  margin-bottom: 0.5rem;
+}
+
+.mobile-detail-image-empty {
+  width: 100%;
+  padding: 1.5rem 2rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  background: var(--bg-inset);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.mobile-detail-body {
+  padding: 1rem 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.mobile-detail-name {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.mobile-detail-manufacturer {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.mobile-detail-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin: 0.15rem 0;
+  padding: 0.75rem;
+  background: var(--bg-elevated);
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-light);
+}
+
+.mobile-detail-meta dt {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 0.1rem;
+}
+
+.mobile-detail-meta dd {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.mobile-detail-actions { margin-top: 0.5rem; }
+
+.mobile-detail-edit-btn {
+  width: 100%;
+  padding: 0.8rem;
+  font-size: 0.95rem;
+  border-radius: 0.9rem;
+}
+
+/* ── Sort popover (both mobile + desktop) ─────────────── */
+.kids-sort-anchor {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.kids-sort-panel {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  z-index: 100;
+  background: var(--bg-card);
+  border: 1px solid var(--border-medium);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-card);
+  min-width: 140px;
+  padding: 0.4rem;
+}
+
+.kids-sort-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.kids-sort-option:hover { background: var(--bg-inset); }
+
+.kids-sort-option.active {
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ── Desktop ─────────────────────────────────────────────── */
+@media (min-width: 769px) {
+  .list-card {
+    background: transparent;
+    box-shadow: none;
+    border: none;
+    padding: 0;
+  }
+
+  .desktop-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-card);
+    border-radius: 0.75rem;
+    box-shadow: var(--shadow-card);
+  }
+
+  .toolbar-search-wrap {
+    flex: 1;
+    position: relative;
+    min-width: 0;
+  }
+
+  .toolbar-search-icon {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    pointer-events: none;
+  }
+
+  .toolbar-search-input {
+    width: 100%;
+    padding: 0.45rem 0.75rem 0.45rem 2.1rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-input);
+    background: var(--bg-inset);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    outline: none;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    appearance: none;
+    transition: border-color 0.15s;
+  }
+
+  .toolbar-search-input:focus {
+    border-color: var(--accent);
+    background: var(--bg-surface);
+  }
+
+  .toolbar-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-medium);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .toolbar-btn:hover { background: var(--bg-elevated); }
+
+  .toolbar-sort-btn { font-weight: 500; }
+
+  .sort-dir-arrow {
+    font-size: 0.85em;
+    color: var(--text-secondary);
+  }
+
+  .toolbar-layout-switcher {
+    display: flex;
+    border: 1px solid var(--border-medium);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .toolbar-layout-btn {
+    width: 2.1rem;
+    height: 2.1rem;
+    border: none;
+    background: var(--bg-surface);
+    color: var(--text-tertiary);
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .toolbar-layout-btn + .toolbar-layout-btn {
+    border-left: 1px solid var(--border-medium);
+  }
+
+  .toolbar-layout-btn.active {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .toolbar-add-btn {
+    flex-shrink: 0;
+    padding: 0.45rem 1rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-default);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+
+  .toolbar-add-btn:hover {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+
+  .desktop-stats-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0 0.25rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .desktop-stats-sep { color: var(--text-muted); }
+
+  /* Desktop card: vertical layout */
+  .set-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.85rem;
+  }
+
+  .set-card {
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+
+  .set-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.14);
+  }
+
+  .set-card__image-panel {
+    width: 100%;
+  }
+
+  .set-card__image-wrapper {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 4 / 3;
+  }
+
+  .set-card__image-empty {
+    aspect-ratio: 4 / 3;
+    height: auto;
+  }
+
+  .set-card__details {
+    margin-left: 0;
+    padding: 0.65rem 0.75rem 0.7rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1;
+  }
+
+  .set-card__name {
+    font-size: 0.88rem;
+    margin: 0;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .set-card__secondary {
+    margin: 0;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .set-card__secondary-sep {
+    color: var(--text-muted);
+    margin: 0 0.1rem;
+  }
+
+  .set-card__data-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.35rem;
+    margin-top: 0.25rem;
+    flex-wrap: wrap;
+  }
+
+  .set-card__data-item {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .set-card__data-unit {
+    font-size: 0.65rem;
+    font-weight: 400;
+    color: var(--text-muted);
+  }
+
+  .set-card__data-sep {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+  }
+}
+
+@media (min-width: 1200px) {
+  .set-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+@media (min-width: 1650px) {
+  .set-grid { grid-template-columns: repeat(5, 1fr); }
 }
 </style>

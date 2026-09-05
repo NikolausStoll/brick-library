@@ -20,297 +20,295 @@
     </nav>
     <KidsApp v-if="activeTab === 'kids'" />
     <template v-else>
-    <section class="card controls-card">
-      <div class="controls-bar">
-        <div class="chip-group">
-          <span class="controls-label">Filter</span>
-          <div class="filter-chips">
-            <div class="chip filter-chip" :class="{ active: filters.manufacturer }">
-              <span>{{ filters.manufacturer || isMobileLayout ? 'Mfr.' : 'Manufacturer' }}</span>
-              <select v-model="filters.manufacturer">
-                <option value="">All</option>
-                <option v-for="manufacturer in activeManufacturers" :key="manufacturer" :value="manufacturer">
-                  {{ manufacturer }}
-                </option>
-              </select>
-            </div>
-            <button
-              type="button"
-              class="chip sort-chip"
-              :class="{ active: filters.hasLegoNumber }"
-              @click="toggleChipFilter('hasLegoNumber')"
-            >
-              <span>Lego#</span>
-            </button>
-            <div class="chip filter-chip" :class="{ active: filters.theme }">
-              <span>{{ filters.theme || 'Theme' }}</span>
-              <select v-model="filters.theme">
-                <option value="">All</option>
-                <option v-for="theme in activeThemes" :key="theme" :value="theme">
-                  {{ theme }}
-                </option>
-              </select>
-            </div>
-            <div class="chip filter-chip" :class="{ active: filters.status }">
-              <span>{{ filters.status || 'Status' }}</span>
-              <select v-model="filters.status">
-                <option value="">All</option>
-                <option v-for="status in statuses" :key="status" :value="status">
-                  {{ status }}
-                </option>
-              </select>
-            </div>
-            <div class="chip filter-chip" :class="{ active: filters.brickSize }">
-              <span>{{ filters.brickSize || isMobileLayout ? 'Size' : 'Brick size' }}</span>
-              <select v-model="filters.brickSize">
-                <option value="">All</option>
-                <option v-for="size in brickSizes" :key="size" :value="size">
-                  {{ size }}
-                </option>
-              </select>
-            </div>
-          </div>
-        </div>
-        <div class="chip-group">
-          <span class="controls-label">Sort</span>
-          <div class="sort-chips">
-            <button
-              v-for="option in sortOptions"
-              :key="option.key"
-              type="button"
-              class="chip sort-chip"
-              :class="{ active: sortField === option.key }"
-              @click="setSortField(option.key)"
-            >
-              <span>{{ option.label }}</span>
-              <span class="sort-direction">
-                {{ sortField === option.key ? (sortDirection === 'asc' ? '▲' : '▼') : '' }}
-              </span>
-            </button>
-          </div>
-        </div>
-        <div class="chip-group layout-switcher">
-          <span class="controls-label">Layout</span>
-          <div class="layout-switcher-buttons">
-            <button
-              type="button"
-              class="chip layout-chip"
-              :class="{ active: layoutMode === 'card' }"
-              aria-label="Card layout"
-              :aria-pressed="layoutMode === 'card'"
-              @click="layoutMode = 'card'"
-            >
-              Cards
-            </button>
-            <button
-              type="button"
-              class="chip layout-chip"
-              :class="{ active: layoutMode === 'list' }"
-              aria-label="List layout"
-              :aria-pressed="layoutMode === 'list'"
-              @click="layoutMode = 'list'"
-            >
-              List
-            </button>
-          </div>
-        </div>
-        <button type="button" class="chip reset-chip" @click="resetFilters">
-          Reset
-        </button>
+
+    <!-- Mobile: search + filter row -->
+    <div v-if="isMobileLayout" class="mobile-top-bar">
+      <div class="mobile-search-wrap">
+        <input
+          v-model="searchQuery"
+          type="search"
+          class="mobile-search-input"
+          placeholder="Search sets…"
+          autocomplete="off"
+        />
+        <span class="mobile-search-icon" aria-hidden="true">&#128269;</span>
       </div>
-    </section>
-    <section v-if="filteredSets.length > 0" class="card stats-card">
-      <dl class="stats-grid">
-        <div>
-          <dt>Total Sets</dt>
-          <dd>{{ filteredSets.length }}</dd>
-        </div>
-        <div>
-          <dt>Total Price</dt>
-          <dd>{{ formatPrice(collectionStats.totalPrice) }}</dd>
-        </div>
-        <div>
-          <dt>Total Pieces</dt>
-          <dd>{{ collectionStats.totalPieces?.toLocaleString() ?? '—' }}</dd>
-        </div>
-        <div>
-          <dt>Avg. Price / Piece</dt>
-          <dd>{{ formatCents(collectionStats.avgPricePerPiece) }}</dd>
-        </div>
-        <div>
-          <dt>New Sets</dt>
-          <dd>{{ collectionStats.newSets }}</dd>
-        </div>
-        <div>
-          <dt>Built Sets</dt>
-          <dd>{{ collectionStats.builtSets }}</dd>
-        </div>
-      </dl>
-    </section>
-    <section class="card list-card">
       <button
-        v-if="isMobileLayout"
         type="button"
-        class="add-set-bar-button"
-        @click="openAddForm"
+        class="mobile-filter-btn"
+        :class="{ active: activeFilterCount > 0 }"
+        @click="mobileFilterDrawerOpen = true"
+        aria-label="Open filters"
       >
-        {{ activeTab === 'wishlist' ? 'Add to wishlist' : 'Add Set' }}
+        <span>Filter</span>
+        <span v-if="activeFilterCount > 0" class="mobile-filter-badge">{{ activeFilterCount }}</span>
       </button>
-      <button
-        v-else
-        type="button"
-        class="add-button"
-        @click="openAddForm"
-        aria-label="Add set"
-      >+</button>
-      <div v-if="filteredSets.length === 0" class="empty">
+    </div>
+
+    <!-- Mobile: count + layout switcher row -->
+    <div v-if="isMobileLayout" class="mobile-summary-bar">
+      <span class="mobile-summary-text">
+        {{ displayedSets.length }} {{ activeTab === 'wishlist' ? 'Items' : 'Sets' }}<template v-if="collectionStats.totalPrice !== null"> · {{ formatPrice(collectionStats.totalPrice) }}</template><template v-if="collectionStats.totalPieces !== null"> · {{ collectionStats.totalPieces.toLocaleString() }} Steine</template>
+      </span>
+      <div class="mobile-layout-switcher">
+        <button
+          type="button"
+          class="mobile-layout-btn"
+          :class="{ active: layoutMode === 'card' }"
+          @click="layoutMode = 'card'"
+          aria-label="Gallery view"
+        >&#9638;</button>
+        <button
+          type="button"
+          class="mobile-layout-btn"
+          :class="{ active: layoutMode === 'list' }"
+          @click="layoutMode = 'list'"
+          aria-label="List view"
+        >&#8801;</button>
+      </div>
+    </div>
+
+    <!-- Desktop toolbar -->
+    <div v-if="!isMobileLayout" class="desktop-toolbar">
+      <div class="toolbar-search-wrap">
+        <span class="toolbar-search-icon" aria-hidden="true">&#128269;</span>
+        <input
+          v-model="searchQuery"
+          type="search"
+          class="toolbar-search-input"
+          placeholder="Search sets…"
+          autocomplete="off"
+        />
+      </div>
+      <div class="toolbar-popover-anchor" ref="filterPopoverRef">
+        <button
+          type="button"
+          class="toolbar-btn"
+          :class="{ 'toolbar-btn--active': activeFilterCount > 0 }"
+          @click="desktopFilterPanelOpen = !desktopFilterPanelOpen"
+        >
+          Filters<span v-if="activeFilterCount > 0" class="toolbar-badge">{{ activeFilterCount }}</span>
+        </button>
+        <div v-if="desktopFilterPanelOpen" class="desktop-filter-panel">
+          <div class="desktop-filter-grid">
+            <div class="desktop-filter-col">
+              <span class="desktop-filter-label">Manufacturer</span>
+              <select v-model="filters.manufacturer" class="desktop-filter-select">
+                <option value="">All</option>
+                <option v-for="m in activeManufacturers" :key="m" :value="m">{{ m }}</option>
+              </select>
+            </div>
+            <div class="desktop-filter-col">
+              <span class="desktop-filter-label">Theme</span>
+              <select v-model="filters.theme" class="desktop-filter-select">
+                <option value="">All</option>
+                <option v-for="t in activeThemes" :key="t" :value="t">{{ t }}</option>
+              </select>
+            </div>
+            <div class="desktop-filter-col">
+              <span class="desktop-filter-label">Status</span>
+              <select v-model="filters.status" class="desktop-filter-select">
+                <option value="">All</option>
+                <option v-for="s in statuses" :key="s" :value="s">{{ s }}</option>
+              </select>
+            </div>
+            <div class="desktop-filter-col">
+              <span class="desktop-filter-label">Size</span>
+              <select v-model="filters.brickSize" class="desktop-filter-select">
+                <option value="">All</option>
+                <option v-for="sz in brickSizes" :key="sz" :value="sz">{{ sz }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="desktop-filter-toggles">
+            <button type="button" class="filter-toggle-chip" :class="{ active: filters.hasLegoNumber }" @click="toggleChipFilter('hasLegoNumber')">LEGO #</button>
+            <button type="button" class="filter-toggle-chip" :class="{ active: filters.hasOriginalBox }" @click="toggleChipFilter('hasOriginalBox')">Box</button>
+            <button type="button" class="filter-toggle-chip" :class="{ active: filters.retiredProduct }" @click="toggleChipFilter('retiredProduct')">Retired</button>
+            <button type="button" class="filter-toggle-chip" :class="{ active: filters.hasPrintedPhoto }" @click="toggleChipFilter('hasPrintedPhoto')">Photo</button>
+            <button type="button" class="filter-toggle-chip" :class="{ active: filters.hasInstructions }" @click="toggleChipFilter('hasInstructions')">Instructions</button>
+          </div>
+          <div class="desktop-filter-footer">
+            <button type="button" class="desktop-filter-reset" @click="resetFilters()">Reset</button>
+            <button type="button" class="desktop-filter-done" @click="desktopFilterPanelOpen = false">Done</button>
+          </div>
+        </div>
+      </div>
+      <div class="toolbar-popover-anchor" ref="sortPopoverRef">
+        <button
+          type="button"
+          class="toolbar-btn toolbar-sort-btn"
+          @click="desktopSortPanelOpen = !desktopSortPanelOpen"
+        >
+          Sort: {{ currentSortLabel }}&thinsp;<span class="sort-dir-arrow">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
+        </button>
+        <div v-if="desktopSortPanelOpen" class="desktop-sort-panel">
+          <button
+            v-for="option in sortOptions"
+            :key="option.key"
+            type="button"
+            class="desktop-sort-option"
+            :class="{ active: sortField === option.key }"
+            @click="setSortField(option.key); desktopSortPanelOpen = false"
+          >
+            {{ option.label }}<span v-if="sortField === option.key" class="sort-dir-arrow"> {{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
+          </button>
+        </div>
+      </div>
+      <div class="toolbar-layout-switcher">
+        <button type="button" class="toolbar-layout-btn" :class="{ active: layoutMode === 'card' }" @click="layoutMode = 'card'" aria-label="Gallery view">&#9638;</button>
+        <button type="button" class="toolbar-layout-btn" :class="{ active: layoutMode === 'list' }" @click="layoutMode = 'list'" aria-label="List view">&#8801;</button>
+      </div>
+      <button type="button" class="toolbar-add-btn" @click="openAddForm">
+        + {{ activeTab === 'wishlist' ? 'Add to Wishlist' : 'Add Set' }}
+      </button>
+    </div>
+
+    <!-- Desktop: compact stats row -->
+    <div v-if="!isMobileLayout && displayedSets.length > 0" class="desktop-stats-row">
+      <span>{{ displayedSets.length }} {{ activeTab === 'wishlist' ? 'Items' : 'Sets' }}</span>
+      <template v-if="collectionStats.totalPrice !== null">
+        <span class="desktop-stats-sep">·</span>
+        <span>{{ formatPrice(collectionStats.totalPrice) }} total</span>
+      </template>
+      <template v-if="collectionStats.totalPieces !== null">
+        <span class="desktop-stats-sep">·</span>
+        <span>{{ collectionStats.totalPieces.toLocaleString() }} pieces</span>
+      </template>
+      <template v-if="collectionStats.avgPricePerPiece !== null">
+        <span class="desktop-stats-sep">·</span>
+        <span class="desktop-stats-secondary">{{ formatCents(collectionStats.avgPricePerPiece) }} avg/piece</span>
+      </template>
+    </div>
+
+    <!-- Desktop: active filter chips row (only when filters active) -->
+    <div v-if="!isMobileLayout && activeFilterCount > 0" class="desktop-active-filters">
+      <span v-if="filters.manufacturer" class="active-chip">{{ filters.manufacturer }}<button type="button" @click="filters.manufacturer = ''">×</button></span>
+      <span v-if="filters.theme" class="active-chip">{{ filters.theme }}<button type="button" @click="filters.theme = ''">×</button></span>
+      <span v-if="filters.status" class="active-chip">{{ filters.status }}<button type="button" @click="filters.status = ''">×</button></span>
+      <span v-if="filters.brickSize" class="active-chip">{{ filters.brickSize }}<button type="button" @click="filters.brickSize = ''">×</button></span>
+      <span v-if="filters.hasLegoNumber" class="active-chip">LEGO #<button type="button" @click="toggleChipFilter('hasLegoNumber')">×</button></span>
+      <span v-if="filters.hasOriginalBox" class="active-chip">Box<button type="button" @click="toggleChipFilter('hasOriginalBox')">×</button></span>
+      <span v-if="filters.retiredProduct" class="active-chip">Retired<button type="button" @click="toggleChipFilter('retiredProduct')">×</button></span>
+      <span v-if="filters.hasPrintedPhoto" class="active-chip">Photo<button type="button" @click="toggleChipFilter('hasPrintedPhoto')">×</button></span>
+      <span v-if="filters.hasInstructions" class="active-chip">Instructions<button type="button" @click="toggleChipFilter('hasInstructions')">×</button></span>
+      <button type="button" class="active-chip-clear" @click="resetFilters">Clear all</button>
+    </div>
+
+    <section class="card list-card">
+      <div v-if="displayedSets.length === 0" class="empty">
         {{ activeSets.length === 0
           ? (activeTab === 'wishlist' ? 'No wishlist items yet.' : 'No sets yet. Add one to start tracking your library.')
           : 'No sets match the active filters.' }}
       </div>
-      <div v-else-if="layoutMode === 'card'" class="set-grid">
+      <template v-else-if="layoutMode === 'card'">
+        <!-- Mobile gallery: 2-column image-first grid -->
+        <div v-if="isMobileLayout" class="mobile-gallery-grid">
+          <button
+            v-for="set in displayedSets"
+            :key="set.id"
+            type="button"
+            class="mobile-gallery-item"
+            @click="openMobileDetail(set)"
+          >
+            <div class="mobile-gallery-img-wrap">
+              <img
+                v-if="getCurrentImage(set.id)"
+                :src="getCurrentImage(set.id)!.thumbUrl || getCurrentImage(set.id)!.url"
+                :data-fallback="getCurrentImage(set.id)!.url"
+                :alt="set.setName"
+                class="mobile-gallery-img"
+                loading="lazy"
+                @error="(e) => { const t = (e.target as HTMLImageElement); const fb = t.dataset.fallback; if (fb) t.src = fb; }"
+              />
+              <div v-else class="mobile-gallery-img-empty"></div>
+            </div>
+            <p class="mobile-gallery-name">{{ set.setName }}</p>
+          </button>
+        </div>
+        <!-- Desktop card grid -->
+        <div v-else class="set-grid">
         <article
-          v-for="set in filteredSets"
+          v-for="set in displayedSets"
           :key="set.id"
           class="set-card"
           @click="startEditing(set)"
         >
-          <div class="set-card__layout">
-            <div class="set-card__image-panel" @click.stop>
-              <div v-if="getImagesForSet(set.id).length" class="set-card__image-wrapper">
-                <img
-                  :src="getCurrentImage(set.id)?.thumbUrl || getCurrentImage(set.id)?.url"
-                  :data-fallback="getCurrentImage(set.id)?.url"
-                  :alt="`Image preview for ${set.setName}`"
-                  class="set-card__image"
-                  loading="lazy"
-                  @click="openImageViewer(set.id)"
-                  @error="(e) => { const t = (e.target as HTMLImageElement); const fb = t.dataset.fallback; if (fb) t.src = fb; }"
-                />
-                <div class="set-card__image-controls" v-if="getImagesForSet(set.id).length > 1">
-                  <button
-                    type="button"
-                    class="carousel-button"
-                    @click.stop="showPreviousImage(set.id)"
-                    aria-label="Show previous image"
-                  >
-                    &#8249;
-                  </button>
-                  <button
-                    type="button"
-                    class="carousel-button"
-                    @click.stop="showNextImage(set.id)"
-                    aria-label="Show next image"
-                  >
-                    &#8250;
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  class="manage-images-gear"
-                  aria-label="Manage images"
-                  @click.stop="openImageManager(set.id)"
-                >
-                  <span class="manage-images-gear__icon">&#9881;</span>
-                </button>
+          <div class="set-card__image-panel" @click.stop>
+            <div v-if="getImagesForSet(set.id).length" class="set-card__image-wrapper">
+              <img
+                :src="getCurrentImage(set.id)?.thumbUrl || getCurrentImage(set.id)?.url"
+                :data-fallback="getCurrentImage(set.id)?.url"
+                :alt="set.setName"
+                class="set-card__image"
+                loading="lazy"
+                @click="openImageViewer(set.id)"
+                @error="(e) => { const t = (e.target as HTMLImageElement); const fb = t.dataset.fallback; if (fb) t.src = fb; }"
+              />
+              <div class="set-card__image-controls" v-if="getImagesForSet(set.id).length > 1">
+                <button type="button" class="carousel-button" @click.stop="showPreviousImage(set.id)" aria-label="Show previous image">&#8249;</button>
+                <button type="button" class="carousel-button" @click.stop="showNextImage(set.id)" aria-label="Show next image">&#8250;</button>
               </div>
-              <div v-else class="set-card__image-empty">
-                <span>No images yet</span>
-                <button
-                  type="button"
-                  class="manage-images-gear"
-                  aria-label="Manage images"
-                  @click.stop="openImageManager(set.id)"
-                >
-                  <span class="manage-images-gear__icon">&#9881;</span>
-                </button>
-              </div>
+              <button type="button" class="manage-images-gear" aria-label="Manage images" @click.stop="openImageManager(set.id)">
+                <span class="manage-images-gear__icon">&#9881;</span>
+              </button>
             </div>
-
-            <div class="set-card__details">
-              <div class="set-card__header">
-                <p class="set-card__manufacturer">{{ set.manufacturer }}</p>
-                <p class="set-card__status" :data-status="set.status" @click.stop="cycleSetStatus(set)">{{ set.status }}</p>
-              </div>
-              <p class="set-card__name">{{ set.setName }}<span v-if="set.year" class="set-card__year">({{ set.year }})</span></p>
-          <p class="set-card__number" v-if="set.setNumber || set.legoReferenceNumber">
-            {{ formatSetNumber(set) }}
-          </p>
-              <dl class="set-card__meta">
-                <div>
-                  <dt>{{ set.listType === 'wishlist' ? 'Target Price' : 'Price' }}</dt>
-                  <dd>{{ formatPrice(set.purchasePrice) }}</dd>
-                </div>
-                <div>
-                  <dt>Pieces</dt>
-                  <dd>{{ set.pieceCount ?? '—' }}</dd>
-                </div>
-                <div>
-                  <dt v-if="isMobileLayout">ct/piece</dt>
-                  <dt v-else>Piece Price</dt>
-                  <dd>{{ formatCents(set.pricePerPiece) }}</dd>
-                </div>
-                <div>
-                  <dt v-if="isMobileLayout">Size</dt>
-                  <dt v-else>Brick Size</dt>
-                  <dd>{{ set.brickSize }}</dd>
-                </div>
-              </dl>
-              <div class="set-card__chips" v-if="set.hasOriginalBox || set.retiredProduct || set.hasPrintedPhoto || set.instructionsUrl">
-                <a
-                  v-if="set.instructionsUrl"
-                  class="detail-chip detail-chip--instructions"
-                  :class="{ active: filters.hasInstructions }"
-                  :href="set.instructionsUrl"
-                  target="_blank"
-                  rel="noopener"
-                  @click.stop
-                >Instructions</a>
-                <span
-                  v-if="set.retiredProduct"
-                  class="detail-chip detail-chip--retired"
-                  :class="{ active: filters.retiredProduct }"
-                  @click.stop="toggleChipFilter('retiredProduct')"
-                >Retired</span>
-                <span class="set-card__chips-spacer"></span>
-                <span
-                  v-if="set.hasOriginalBox"
-                  class="detail-chip detail-chip--info"
-                  :class="{ active: filters.hasOriginalBox }"
-                  @click.stop="toggleChipFilter('hasOriginalBox')"
-                >Box</span>
-                <span
-                  v-if="set.hasPrintedPhoto"
-                  class="detail-chip detail-chip--info"
-                  :class="{ active: filters.hasPrintedPhoto }"
-                  @click.stop="toggleChipFilter('hasPrintedPhoto')"
-                >Photo</span>
-              </div>
+            <div v-else class="set-card__image-empty">
+              <span>No images yet</span>
+              <button type="button" class="manage-images-gear" aria-label="Manage images" @click.stop="openImageManager(set.id)">
+                <span class="manage-images-gear__icon">&#9881;</span>
+              </button>
+            </div>
+          </div>
+          <div class="set-card__details">
+            <div class="set-card__name-row">
+              <p class="set-card__name">{{ set.setName }}<span v-if="set.year" class="set-card__year"> ({{ set.year }})</span></p>
+              <p class="set-card__status" :data-status="set.status" @click.stop="cycleSetStatus(set)">{{ set.status }}</p>
+            </div>
+            <p class="set-card__secondary">
+              <span class="set-card__manufacturer">{{ set.manufacturer }}</span>
+              <template v-if="set.setNumber || set.legoReferenceNumber">
+                <span class="set-card__secondary-sep" aria-hidden="true"> · </span>
+                <span class="set-card__number">{{ formatSetNumber(set) }}</span>
+              </template>
+            </p>
+            <div class="set-card__data-row">
+              <span class="set-card__data-item">{{ formatPrice(set.purchasePrice) }}</span>
+              <span class="set-card__data-sep" aria-hidden="true">·</span>
+              <span class="set-card__data-item">{{ set.pieceCount?.toLocaleString() ?? '—' }}<span class="set-card__data-unit"> pcs</span></span>
+              <span class="set-card__data-sep" aria-hidden="true">·</span>
+              <span class="set-card__data-item">{{ formatCents(set.pricePerPiece) }}</span>
+            </div>
+            <div class="set-card__chips" v-if="set.hasOriginalBox || set.retiredProduct || set.hasPrintedPhoto || set.instructionsUrl">
+              <a v-if="set.instructionsUrl" class="detail-chip detail-chip--instructions" :href="set.instructionsUrl" target="_blank" rel="noopener" @click.stop>Instructions</a>
+              <span v-if="set.retiredProduct" class="detail-chip detail-chip--retired" @click.stop="toggleChipFilter('retiredProduct')">Retired</span>
+              <span class="set-card__chips-spacer"></span>
+              <span v-if="set.hasOriginalBox" class="detail-chip detail-chip--info" @click.stop="toggleChipFilter('hasOriginalBox')">Box</span>
+              <span v-if="set.hasPrintedPhoto" class="detail-chip detail-chip--info" @click.stop="toggleChipFilter('hasPrintedPhoto')">Photo</span>
             </div>
           </div>
         </article>
-      </div>
-      <div v-else class="set-list" role="list">
+        </div><!-- /desktop set-grid -->
+      </template><!-- /card layout -->
+      <div v-else-if="layoutMode === 'list'" class="set-list" role="list">
         <div v-if="!isMobileLayout" class="set-list-header" aria-hidden="true">
           <span class="set-list-header-thumb"></span>
           <span>Name</span>
-          <span>Manufacturer</span>
-          <span>Set Number</span>
-          <span>Lego Set Number</span>
+          <span>Mfr.</span>
+          <span>Set #</span>
           <span>Price</span>
           <span>Pieces</span>
-          <span>Price per Piece</span>
+          <span>ct/piece</span>
           <span class="set-list-header-status">Status</span>
         </div>
         <article
-          v-for="set in filteredSets"
+          v-for="set in displayedSets"
           :key="set.id"
           class="set-list-row"
           role="listitem"
           tabindex="0"
-          @click="startEditing(set)"
-          @keydown.enter="startEditing(set)"
-          @keydown.space.prevent="startEditing(set)"
+          @click="isMobileLayout ? openMobileDetail(set) : startEditing(set)"
+          @keydown.enter="isMobileLayout ? openMobileDetail(set) : startEditing(set)"
+          @keydown.space.prevent="isMobileLayout ? openMobileDetail(set) : startEditing(set)"
         >
           <div
             class="set-list-thumb"
@@ -335,8 +333,7 @@
           </div>
           <span class="set-list-col set-list-col--name set-list-col--desktop" :title="set.setName">{{ set.setName }}</span>
           <span class="set-list-col set-list-col--mfr set-list-col--desktop" :title="set.manufacturer">{{ set.manufacturer }}</span>
-          <span class="set-list-col set-list-col--desktop">{{ formatListValue(set.setNumber) }}</span>
-          <span class="set-list-col set-list-col--desktop">{{ formatListValue(set.legoReferenceNumber) }}</span>
+          <span class="set-list-col set-list-col--desktop">{{ formatListValue(set.setNumber || set.legoReferenceNumber) }}</span>
           <span class="set-list-col set-list-col--desktop">{{ formatPrice(set.purchasePrice) }}</span>
           <span class="set-list-col set-list-col--desktop">{{ formatListValue(set.pieceCount) }}</span>
           <span class="set-list-col set-list-col--desktop">{{ formatCents(set.pricePerPiece) }}</span>
@@ -783,6 +780,183 @@
       <p v-else class="image-gallery-empty">No images uploaded yet.</p>
     </div>
   </div>
+  <!-- Mobile FAB -->
+  <button
+    v-if="isMobileLayout"
+    type="button"
+    class="mobile-fab"
+    @click="openAddForm"
+    :aria-label="activeTab === 'wishlist' ? 'Add to wishlist' : 'Add set'"
+  >+</button>
+
+  <!-- Mobile filter drawer -->
+  <div
+    v-if="mobileFilterDrawerOpen"
+    class="overlay mobile-filter-overlay"
+    role="dialog"
+    aria-modal="true"
+    @click.self="mobileFilterDrawerOpen = false"
+    @keydown.esc="mobileFilterDrawerOpen = false"
+    tabindex="-1"
+  >
+    <div class="mobile-filter-drawer">
+      <div class="mobile-filter-drawer-handle"></div>
+      <div class="mobile-filter-drawer-header">
+        <span class="mobile-filter-drawer-title">Filter &amp; Sort</span>
+        <button type="button" class="icon-button" @click="mobileFilterDrawerOpen = false">&times;</button>
+      </div>
+      <div class="mobile-filter-section">
+        <span class="controls-label">Filter</span>
+        <div class="filter-chips" style="flex-wrap: wrap; display: flex; gap: 0.5rem;">
+          <div class="chip filter-chip" :class="{ active: filters.manufacturer }">
+            <span>{{ filters.manufacturer || 'Manufacturer' }}</span>
+            <select v-model="filters.manufacturer">
+              <option value="">All</option>
+              <option v-for="m in activeManufacturers" :key="m" :value="m">{{ m }}</option>
+            </select>
+          </div>
+          <button type="button" class="chip sort-chip" :class="{ active: filters.hasLegoNumber }" @click="toggleChipFilter('hasLegoNumber')"><span>Lego#</span></button>
+          <div class="chip filter-chip" :class="{ active: filters.theme }">
+            <span>{{ filters.theme || 'Theme' }}</span>
+            <select v-model="filters.theme">
+              <option value="">All</option>
+              <option v-for="t in activeThemes" :key="t" :value="t">{{ t }}</option>
+            </select>
+          </div>
+          <div class="chip filter-chip" :class="{ active: filters.status }">
+            <span>{{ filters.status || 'Status' }}</span>
+            <select v-model="filters.status">
+              <option value="">All</option>
+              <option v-for="s in statuses" :key="s" :value="s">{{ s }}</option>
+            </select>
+          </div>
+          <div class="chip filter-chip" :class="{ active: filters.brickSize }">
+            <span>{{ filters.brickSize || 'Size' }}</span>
+            <select v-model="filters.brickSize">
+              <option value="">All</option>
+              <option v-for="sz in brickSizes" :key="sz" :value="sz">{{ sz }}</option>
+            </select>
+          </div>
+          <button type="button" class="chip sort-chip" :class="{ active: filters.hasOriginalBox }" @click="toggleChipFilter('hasOriginalBox')"><span>Box</span></button>
+          <button type="button" class="chip sort-chip" :class="{ active: filters.retiredProduct }" @click="toggleChipFilter('retiredProduct')"><span>Retired</span></button>
+          <button type="button" class="chip sort-chip" :class="{ active: filters.hasPrintedPhoto }" @click="toggleChipFilter('hasPrintedPhoto')"><span>Photo</span></button>
+          <button type="button" class="chip sort-chip" :class="{ active: filters.hasInstructions }" @click="toggleChipFilter('hasInstructions')"><span>Instructions</span></button>
+        </div>
+      </div>
+      <div class="mobile-filter-section">
+        <span class="controls-label">Sort</span>
+        <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+          <button
+            v-for="option in sortOptions"
+            :key="option.key"
+            type="button"
+            class="chip sort-chip"
+            :class="{ active: sortField === option.key }"
+            @click="setSortField(option.key)"
+          >
+            <span>{{ option.label }}</span>
+            <span class="sort-direction">{{ sortField === option.key ? (sortDirection === 'asc' ? '▲' : '▼') : '' }}</span>
+          </button>
+        </div>
+      </div>
+      <div class="mobile-filter-drawer-footer">
+        <button type="button" class="chip reset-chip" @click="resetFilters()">Reset</button>
+        <button type="button" class="primary-button mobile-filter-close-btn" @click="mobileFilterDrawerOpen = false">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile set detail sheet -->
+  <div
+    v-if="mobileDetailSet"
+    class="overlay mobile-detail-overlay"
+    role="dialog"
+    aria-modal="true"
+    @click.self="closeMobileDetail"
+    @keydown.esc="closeMobileDetail"
+    tabindex="-1"
+  >
+    <div class="mobile-detail-sheet">
+      <div class="mobile-detail-handle"></div>
+      <div class="mobile-detail-top">
+        <div class="mobile-detail-top-actions">
+          <button type="button" class="icon-button" aria-label="Edit set" @click="openMobileDetailEdit">&#9998;</button>
+          <button type="button" class="icon-button" aria-label="Close" @click="closeMobileDetail">&times;</button>
+        </div>
+      </div>
+      <div v-if="getImagesForSet(mobileDetailSet!.id).length" class="mobile-detail-image-area">
+        <img
+          :src="getCurrentImage(mobileDetailSet!.id)!.thumbUrl || getCurrentImage(mobileDetailSet!.id)!.url"
+          :data-fallback="getCurrentImage(mobileDetailSet!.id)!.url"
+          :alt="mobileDetailSet!.setName"
+          class="mobile-detail-main-image"
+          @click="openImageViewer(mobileDetailSet!.id)"
+          @error="(e) => { const t = (e.target as HTMLImageElement); const fb = t.dataset.fallback; if (fb) t.src = fb; }"
+        />
+        <button
+          type="button"
+          class="manage-images-gear mobile-detail-img-gear"
+          aria-label="Manage images"
+          @click.stop="openMobileDetailImages"
+        ><span class="manage-images-gear__icon">&#9881;</span></button>
+      </div>
+      <div v-else class="mobile-detail-image-empty">
+        <button
+          type="button"
+          class="manage-images-gear mobile-detail-img-gear mobile-detail-img-gear--empty"
+          aria-label="Add images"
+          @click.stop="openMobileDetailImages"
+        ><span class="manage-images-gear__icon">&#9881;</span></button>
+        No images
+      </div>
+      <div class="mobile-detail-body">
+        <div class="mobile-detail-name-row">
+          <h2 class="mobile-detail-name">{{ mobileDetailSet!.setName }}<span v-if="mobileDetailSet!.year" class="set-card__year">({{ mobileDetailSet!.year }})</span></h2>
+          <span class="set-card__status" :data-status="mobileDetailSet!.status" @click="cycleSetStatus(mobileDetailSet!)">{{ mobileDetailSet!.status }}</span>
+        </div>
+        <p class="mobile-detail-manufacturer">{{ mobileDetailSet!.manufacturer }}</p>
+        <p v-if="mobileDetailSet!.setNumber || mobileDetailSet!.legoReferenceNumber" class="set-card__number">{{ formatSetNumber(mobileDetailSet!) }}</p>
+        <dl class="mobile-detail-meta">
+          <div v-if="mobileDetailSet!.purchasePrice !== null">
+            <dt>{{ mobileDetailSet!.listType === 'wishlist' ? 'Target' : 'Price' }}</dt>
+            <dd>{{ formatPrice(mobileDetailSet!.purchasePrice) }}</dd>
+          </div>
+          <div v-if="mobileDetailSet!.pieceCount !== null">
+            <dt>Pieces</dt>
+            <dd>{{ mobileDetailSet!.pieceCount!.toLocaleString() }}</dd>
+          </div>
+          <div v-if="mobileDetailSet!.pricePerPiece !== null">
+            <dt>ct/piece</dt>
+            <dd>{{ formatCents(mobileDetailSet!.pricePerPiece) }}</dd>
+          </div>
+          <div v-if="mobileDetailSet!.brickSize">
+            <dt>Size</dt>
+            <dd>{{ mobileDetailSet!.brickSize }}</dd>
+          </div>
+          <div v-if="mobileDetailSet!.theme">
+            <dt>Theme</dt>
+            <dd>{{ mobileDetailSet!.theme }}</dd>
+          </div>
+          <div v-if="mobileDetailSet!.year">
+            <dt>Year</dt>
+            <dd>{{ mobileDetailSet!.year }}</dd>
+          </div>
+        </dl>
+        <div class="set-card__chips" v-if="mobileDetailSet!.hasOriginalBox || mobileDetailSet!.retiredProduct || mobileDetailSet!.hasPrintedPhoto || mobileDetailSet!.instructionsUrl">
+          <a v-if="mobileDetailSet!.instructionsUrl" class="detail-chip detail-chip--instructions" :href="mobileDetailSet!.instructionsUrl" target="_blank" rel="noopener" @click.stop>Instructions</a>
+          <span v-if="mobileDetailSet!.retiredProduct" class="detail-chip detail-chip--retired">Retired</span>
+          <span class="set-card__chips-spacer"></span>
+          <span v-if="mobileDetailSet!.hasOriginalBox" class="detail-chip detail-chip--info">Box</span>
+          <span v-if="mobileDetailSet!.hasPrintedPhoto" class="detail-chip detail-chip--info">Photo</span>
+        </div>
+        <p v-if="mobileDetailSet!.notes" class="mobile-detail-notes">{{ mobileDetailSet!.notes }}</p>
+        <div class="mobile-detail-actions">
+          <button type="button" class="primary-button mobile-detail-edit-btn" @click="openMobileDetailEdit">Edit Set</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="app-footer">
     <span class="app-version">v{{ appVersion }}</span>
     <button type="button" class="dark-mode-toggle" @click="toggleDarkMode" :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'">
@@ -991,6 +1165,7 @@ watch(imageViewerSetId, (newVal, oldVal) => {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleViewerKeydown);
   window.removeEventListener('resize', updateIsMobileLayout);
+  document.removeEventListener('mousedown', handleDesktopOutsideClick);
 });
 
 const ZOOM_SCALE = 2.5;
@@ -1581,8 +1756,85 @@ const filteredSets = computed(() => {
   return result;
 });
 
+const searchQuery = ref('');
+const mobileFilterDrawerOpen = ref(false);
+const mobileDetailSetId = ref<string | null>(null);
+const desktopFilterPanelOpen = ref(false);
+const desktopSortPanelOpen = ref(false);
+const filterPopoverRef = ref<HTMLElement | null>(null);
+const sortPopoverRef = ref<HTMLElement | null>(null);
+
+const activeFilterCount = computed(() => {
+  return [
+    filters.manufacturer,
+    filters.theme,
+    filters.status,
+    filters.brickSize,
+    filters.hasOriginalBox,
+    filters.retiredProduct,
+    filters.hasPrintedPhoto,
+    filters.hasInstructions,
+    filters.hasLegoNumber
+  ].filter(Boolean).length;
+});
+
+const displayedSets = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase();
+  if (!q) return filteredSets.value;
+  return filteredSets.value.filter((s) =>
+    s.setName.toLowerCase().includes(q) ||
+    (s.setNumber?.toLowerCase().includes(q) ?? false) ||
+    (s.legoReferenceNumber?.toLowerCase().includes(q) ?? false) ||
+    s.manufacturer.toLowerCase().includes(q)
+  );
+});
+
+const mobileDetailSet = computed(() =>
+  mobileDetailSetId.value ? sets.value.find((s) => s.id === mobileDetailSetId.value) ?? null : null
+);
+
+const currentSortLabel = computed(() =>
+  sortOptions.find((o) => o.key === sortField.value)?.label ?? String(sortField.value)
+);
+
+const handleDesktopOutsideClick = (event: MouseEvent) => {
+  if (filterPopoverRef.value && !filterPopoverRef.value.contains(event.target as Node)) {
+    desktopFilterPanelOpen.value = false;
+  }
+  if (sortPopoverRef.value && !sortPopoverRef.value.contains(event.target as Node)) {
+    desktopSortPanelOpen.value = false;
+  }
+};
+
+watch([desktopFilterPanelOpen, desktopSortPanelOpen], ([filterOpen, sortOpen]) => {
+  if (filterOpen || sortOpen) {
+    document.addEventListener('mousedown', handleDesktopOutsideClick);
+  } else {
+    document.removeEventListener('mousedown', handleDesktopOutsideClick);
+  }
+});
+
+const openMobileDetail = (set: BrickSet) => {
+  mobileDetailSetId.value = set.id;
+};
+const closeMobileDetail = () => {
+  mobileDetailSetId.value = null;
+};
+const openMobileDetailEdit = () => {
+  const set = mobileDetailSet.value;
+  if (!set) return;
+  closeMobileDetail();
+  startEditing(set);
+};
+const openMobileDetailImages = () => {
+  const set = mobileDetailSet.value;
+  if (!set) return;
+  closeMobileDetail();
+  openImageManager(set.id);
+};
+
 const collectionStats = computed(() => {
-  const all = filteredSets.value;
+  const all = displayedSets.value;
   const newSets = all.filter((s) => s.status === 'New' || s.status === 'Building').length;
   const builtSets = all.filter((s) => s.status === 'Built' || s.status === 'Disassembled' || s.status === 'Sold').length;
   const priced = all.filter((s) => s.purchasePrice != null);
@@ -2469,7 +2721,7 @@ onMounted(async () => {
 
 .set-list-header {
   display: grid;
-  grid-template-columns: 48px 2fr 0.85fr 1fr 1fr 0.85fr 0.75fr 1fr 7rem;
+  grid-template-columns: 52px 2fr 0.8fr 0.9fr 0.8fr 0.7fr 0.8fr 7rem;
   gap: 0.75rem;
   align-items: center;
   padding: 0.35rem 0.75rem 0.5rem;
@@ -3382,14 +3634,8 @@ onMounted(async () => {
 }
 
 @media (min-width: 769px) {
-  .chip-group {
-    border-radius: 0.65rem;
-    outline: 1px solid var(--border-default);
-    outline-offset: 4px;
-  }
-
   .set-list-row {
-    grid-template-columns: 48px 2fr 0.85fr 1fr 1fr 0.85fr 0.75fr 1fr 7rem;
+    grid-template-columns: 52px 2fr 0.8fr 0.9fr 0.8fr 0.7fr 0.8fr 7rem;
     grid-template-rows: auto;
     gap: 0.75rem;
     padding: 0.5rem 0.75rem;
@@ -3442,17 +3688,6 @@ onMounted(async () => {
   }
 }
 
-@media (min-width: 768px) {
-  .set-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (min-width: 1750px) {
-  .set-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
 
 @media (max-width: 768px) {
   .page {
@@ -3506,7 +3741,7 @@ onMounted(async () => {
   }
 
   .set-list-thumb {
-    border-width: 3px;
+    border-width: 2px;
     border-style: solid;
     border-color: var(--border-light);
   }
@@ -3569,6 +3804,958 @@ onMounted(async () => {
   
   .reset-chip {
     margin-left: 0;
+  }
+}
+
+/* ── Mobile-only new elements ─────────────────────────────── */
+
+.mobile-top-bar,
+.mobile-summary-bar,
+.mobile-fab,
+.mobile-gallery-grid {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Top search + filter row */
+  .mobile-top-bar {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0 0.1rem;
+  }
+
+  .mobile-search-wrap {
+    flex: 1;
+    position: relative;
+  }
+
+  .mobile-search-input {
+    width: 100%;
+    padding: 0.6rem 2.4rem 0.6rem 0.85rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-input);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    outline: none;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .mobile-search-input:focus {
+    border-color: var(--accent);
+  }
+
+  .mobile-search-icon {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    pointer-events: none;
+  }
+
+  .mobile-filter-btn {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.6rem 0.9rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-input);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .mobile-filter-btn.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .mobile-filter-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.6rem;
+    font-weight: 700;
+    padding: 0 0.15rem;
+  }
+
+  /* Summary + layout switcher row */
+  .mobile-summary-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 0.25rem;
+  }
+
+  .mobile-summary-text {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .mobile-layout-switcher {
+    display: flex;
+    gap: 0.2rem;
+  }
+
+  .mobile-layout-btn {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.4rem;
+    border: 1px solid var(--border-default);
+    background: var(--bg-surface);
+    color: var(--text-tertiary);
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  .mobile-layout-btn.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  /* Gallery grid */
+  .mobile-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.45rem;
+  }
+
+  .mobile-gallery-item {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-gallery-img-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: var(--bg-inset);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    border: 1px solid var(--border-light);
+  }
+
+  .mobile-gallery-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  .mobile-gallery-img-empty {
+    width: 100%;
+    height: 100%;
+    background: var(--bg-inset);
+  }
+
+  .mobile-gallery-status {
+    position: absolute;
+    bottom: 0.3rem;
+    left: 0.3rem;
+    font-size: 0.5rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.15rem 0.4rem;
+    border-radius: 999px;
+    background: var(--status-default-bg);
+    color: var(--text-strong);
+    pointer-events: none;
+  }
+
+  .mobile-gallery-status[data-status="Building"] { background: var(--status-building-bg); color: var(--status-building-text); }
+  .mobile-gallery-status[data-status="Built"] { background: var(--status-built-bg); color: var(--status-built-text); }
+  .mobile-gallery-status[data-status="Disassembled"] { background: var(--status-built-bg); color: var(--status-built-text); }
+  .mobile-gallery-status[data-status="Sold"] { background: var(--status-sold-bg); color: var(--status-sold-text); }
+
+  .mobile-gallery-name {
+    margin: 0;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    padding: 0 0.1rem 0.15rem;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.3;
+  }
+
+  /* Floating action button */
+  .mobile-fab {
+    position: fixed;
+    bottom: 3.5rem;
+    right: 0.75rem;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    z-index: 20;
+    transition: transform 0.15s, box-shadow 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-fab:active {
+    transform: scale(0.94);
+  }
+}
+
+/* Filter drawer (visible on any screen width when open, but triggered only on mobile) */
+.mobile-filter-overlay {
+  align-items: flex-end;
+  padding: 0;
+}
+
+.mobile-filter-drawer {
+  width: 100%;
+  max-height: 85vh;
+  background: var(--bg-card);
+  border-radius: 1.25rem 1.25rem 0 0;
+  padding: 0 1.25rem 2rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.mobile-filter-drawer-handle {
+  width: 2.5rem;
+  height: 0.25rem;
+  background: var(--border-medium);
+  border-radius: 999px;
+  margin: 0.75rem auto 0;
+  flex-shrink: 0;
+}
+
+.mobile-filter-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mobile-filter-drawer-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.mobile-filter-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.mobile-filter-drawer-footer {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: flex-end;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-default);
+}
+
+.mobile-filter-close-btn {
+  padding: 0.6rem 1.75rem;
+  font-size: 0.85rem;
+  border-radius: 999px;
+}
+
+/* Detail sheet */
+.mobile-detail-overlay {
+  align-items: flex-end;
+  padding: 0;
+}
+
+.mobile-detail-sheet {
+  width: 100%;
+  max-height: 92vh;
+  background: var(--bg-card);
+  border-radius: 1.25rem 1.25rem 0 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-detail-handle {
+  width: 2.5rem;
+  height: 0.25rem;
+  background: var(--border-medium);
+  border-radius: 999px;
+  margin: 0.75rem auto 0.25rem;
+  flex-shrink: 0;
+}
+
+.mobile-detail-top {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.25rem 1rem 0.85rem;
+}
+
+.mobile-detail-top-actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.mobile-detail-image-area {
+  width: 100%;
+  max-height: 50vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-inset);
+  overflow: hidden;
+  position: relative;
+}
+
+.mobile-detail-img-gear {
+  opacity: 1 !important;
+}
+
+.mobile-detail-img-gear--empty {
+  position: static;
+  margin-bottom: 0.5rem;
+}
+
+.mobile-detail-main-image {
+  width: 100%;
+  max-height: 50vw;
+  object-fit: contain;
+  cursor: zoom-in;
+}
+
+.mobile-detail-image-empty {
+  width: 100%;
+  padding: 1.5rem 2rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  background: var(--bg-inset);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.mobile-detail-body {
+  padding: 1rem 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.mobile-detail-name-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.mobile-detail-name {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+}
+
+.mobile-detail-manufacturer {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.mobile-detail-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin: 0.15rem 0;
+  padding: 0.75rem;
+  background: var(--bg-elevated);
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-light);
+}
+
+.mobile-detail-meta dt {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 0.1rem;
+}
+
+.mobile-detail-meta dd {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.mobile-detail-notes {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--border-light);
+}
+
+.mobile-detail-actions {
+  margin-top: 0.5rem;
+}
+
+.mobile-detail-edit-btn {
+  width: 100%;
+  padding: 0.8rem;
+  font-size: 0.95rem;
+  border-radius: 0.9rem;
+}
+
+/* ── Desktop toolbar ──────────────────────────────────────── */
+
+.desktop-toolbar {
+  display: none;
+}
+
+.desktop-stats-row {
+  display: none;
+}
+
+.desktop-active-filters {
+  display: none;
+}
+
+@media (min-width: 769px) {
+  .list-card {
+    background: transparent;
+    box-shadow: none;
+    border: none;
+    padding: 0;
+  }
+
+  .desktop-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-card);
+    border-radius: 0.75rem;
+    box-shadow: var(--shadow-card);
+  }
+
+  .toolbar-search-wrap {
+    flex: 1;
+    position: relative;
+    min-width: 0;
+  }
+
+  .toolbar-search-icon {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    pointer-events: none;
+  }
+
+  .toolbar-search-input {
+    width: 100%;
+    padding: 0.45rem 0.75rem 0.45rem 2.1rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-input);
+    background: var(--bg-inset);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    outline: none;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    appearance: none;
+    transition: border-color 0.15s;
+  }
+
+  .toolbar-search-input:focus {
+    border-color: var(--accent);
+    background: var(--bg-surface);
+  }
+
+  .toolbar-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-medium);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .toolbar-btn:hover {
+    background: var(--bg-elevated);
+  }
+
+  .toolbar-btn--active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .toolbar-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.6rem;
+    font-weight: 700;
+    padding: 0 0.15rem;
+  }
+
+  .toolbar-sort-btn {
+    font-weight: 500;
+  }
+
+  .sort-dir-arrow {
+    font-size: 0.85em;
+    color: var(--text-secondary);
+  }
+
+  .toolbar-popover-anchor {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .desktop-filter-panel,
+  .desktop-sort-panel {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    left: 0;
+    z-index: 100;
+    background: var(--bg-card);
+    border: 1px solid var(--border-medium);
+    border-radius: 0.75rem;
+    box-shadow: var(--shadow-card);
+    min-width: 320px;
+    padding: 1rem;
+  }
+
+  .desktop-filter-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .desktop-filter-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .desktop-filter-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+  }
+
+  .desktop-filter-select {
+    padding: 0.4rem 0.6rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border-input);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+
+  .desktop-filter-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    padding: 0.65rem 0;
+    border-top: 1px solid var(--border-light);
+    border-bottom: 1px solid var(--border-light);
+    margin-bottom: 0.65rem;
+  }
+
+  .filter-toggle-chip {
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-medium);
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  .filter-toggle-chip.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .desktop-filter-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+
+  .desktop-filter-reset {
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-danger);
+    background: transparent;
+    color: var(--color-danger);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .desktop-filter-reset:hover {
+    background: var(--bg-danger-soft);
+  }
+
+  .desktop-filter-done {
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-medium);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .desktop-filter-done:hover {
+    background: var(--bg-elevated);
+  }
+
+  .desktop-sort-panel {
+    min-width: 160px;
+    padding: 0.4rem;
+  }
+
+  .desktop-sort-option {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.75rem;
+    border: none;
+    border-radius: 0.45rem;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.1s;
+  }
+
+  .desktop-sort-option:hover {
+    background: var(--bg-inset);
+  }
+
+  .desktop-sort-option.active {
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .toolbar-layout-switcher {
+    display: flex;
+    border: 1px solid var(--border-medium);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .toolbar-layout-btn {
+    width: 2.1rem;
+    height: 2.1rem;
+    border: none;
+    background: var(--bg-surface);
+    color: var(--text-tertiary);
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .toolbar-layout-btn + .toolbar-layout-btn {
+    border-left: 1px solid var(--border-medium);
+  }
+
+  .toolbar-layout-btn.active {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .toolbar-add-btn {
+    flex-shrink: 0;
+    padding: 0.45rem 1rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-default);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+
+  .toolbar-add-btn:hover {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+
+  .desktop-stats-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0 0.25rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .desktop-stats-sep {
+    color: var(--text-muted);
+  }
+
+  .desktop-stats-secondary {
+    color: var(--text-muted);
+  }
+
+  .desktop-active-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0 0.1rem;
+  }
+
+  .active-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.3rem 0.2rem 0.6rem;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    border: 1px solid rgba(233, 111, 20, 0.3);
+    color: var(--accent);
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+
+  .active-chip button {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 0.85rem;
+    line-height: 1;
+    padding: 0 0.1rem;
+    opacity: 0.7;
+  }
+
+  .active-chip button:hover {
+    opacity: 1;
+  }
+
+  .active-chip-clear {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    cursor: pointer;
+    padding: 0.2rem 0.4rem;
+    border-radius: 999px;
+    margin-left: auto;
+    transition: color 0.15s;
+  }
+
+  .active-chip-clear:hover {
+    color: var(--color-danger);
+  }
+
+  /* ── Desktop card redesign ────────────────────────── */
+
+  .set-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.85rem;
+  }
+
+  .set-card {
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+
+  .set-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.14);
+  }
+
+  .set-card__image-panel {
+    width: 100%;
+    order: 0;
+    flex-shrink: 0;
+  }
+
+  .set-card__image-wrapper {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 4 / 3;
+  }
+
+  .set-card__image-empty {
+    aspect-ratio: 4 / 3;
+    height: auto;
+  }
+
+  .set-card__details {
+    margin-left: 0;
+    padding: 0.65rem 0.75rem 0.7rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1;
+  }
+
+  .set-card__name-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.4rem;
+  }
+
+  .set-card__name {
+    font-size: 0.88rem;
+    margin: 0;
+    font-weight: 600;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .set-card__secondary {
+    margin: 0;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .set-card__secondary-sep {
+    color: var(--text-muted);
+  }
+
+  .set-card__data-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.35rem;
+    margin-top: 0.25rem;
+    flex-wrap: wrap;
+  }
+
+  .set-card__data-item {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .set-card__data-unit {
+    font-size: 0.65rem;
+    font-weight: 400;
+    color: var(--text-muted);
+  }
+
+  .set-card__data-sep {
+    color: var(--text-muted);
+    font-size: 0.7rem;
+  }
+
+  .set-card__status {
+    font-size: 0.65rem;
+    flex-shrink: 0;
+  }
+}
+
+@media (min-width: 1200px) {
+  .set-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (min-width: 1650px) {
+  .set-grid {
+    grid-template-columns: repeat(5, 1fr);
   }
 }
 
