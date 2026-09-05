@@ -999,7 +999,7 @@
     </button>
     <button
       type="button"
-      class="mobile-nav-item"
+      class="mobile-nav-item mobile-nav-darkmode"
       @click="toggleDarkMode"
       :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
     >
@@ -1022,11 +1022,11 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import configText from '../../brick-library/config.yaml?raw';
 import KidsApp from './kids/KidsApp.vue';
 
-const kidsAppRef = ref<InstanceType<typeof KidsApp> | null>(null);
+const kidsAppRef = ref<{ openAddForm: () => void } | null>(null);
 
 const handleBottomNavAdd = () => {
   if (activeTab.value === 'kids') {
-    kidsAppRef.value?.openAddForm?.();
+    kidsAppRef.value?.openAddForm();
   } else {
     openAddForm();
   }
@@ -5185,13 +5185,17 @@ onMounted(async () => {
     bottom: 0;
     left: 0;
     right: 0;
-    height: 3.75rem;
+    height: calc(3.75rem + env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box;
     background: var(--bg-card);
     border-top: 1px solid var(--border-light);
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
     z-index: 25;
-    align-items: stretch;
-    padding-bottom: env(safe-area-inset-bottom, 0);
+    /* align-items: center + box-sizing: border-box → items centered in the 3.75rem content area */
+    align-items: center;
+    padding: 0 0.35rem env(safe-area-inset-bottom, 0px);
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
   }
 
   .mobile-nav-item {
@@ -5205,13 +5209,23 @@ onMounted(async () => {
     background: none;
     color: var(--text-muted);
     cursor: pointer;
-    padding: 0.3rem 0;
+    padding: 0;
     transition: color 0.15s;
     -webkit-tap-highlight-color: transparent;
   }
 
   .mobile-nav-item.active {
     color: var(--accent);
+  }
+
+  /* Dark mode item stays monochrome — no accent tint */
+  .mobile-nav-item.mobile-nav-darkmode,
+  .mobile-nav-item.mobile-nav-darkmode.active {
+    color: var(--text-muted);
+  }
+
+  .mobile-nav-item.mobile-nav-darkmode .mobile-nav-icon {
+    filter: grayscale(1) saturate(0);
   }
 
   .mobile-nav-icon {
@@ -5230,21 +5244,20 @@ onMounted(async () => {
 
   .mobile-nav-add {
     flex-shrink: 0;
-    width: 2.75rem;
-    height: 2.75rem;
+    width: 2.25rem;
+    height: 2.25rem;
     border-radius: 50%;
     border: none;
     background: var(--accent);
     color: #fff;
-    font-size: 1.5rem;
+    font-size: 1.35rem;
     line-height: 1;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 3px 12px rgba(233, 111, 20, 0.45);
-    align-self: center;
-    margin: 0 0.25rem;
+    box-shadow: 0 3px 10px rgba(233, 111, 20, 0.4);
+    margin: 0 0.35rem;
     -webkit-tap-highlight-color: transparent;
     transition: transform 0.15s;
   }
