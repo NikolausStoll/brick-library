@@ -1,4 +1,4 @@
-FROM node:20-bullseye AS builder
+FROM node:20-bookworm AS builder
 
 WORKDIR /app
 
@@ -13,12 +13,12 @@ COPY . .
 RUN npm run build --workspace frontend
 
 
-FROM node:20-bullseye AS runtime
+FROM node:20-bookworm AS runtime
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  python3 make g++ sqlite3 \
+  python3 make g++ \
   && rm -rf /var/lib/apt/lists/*
 
 ENV PORT=8098
