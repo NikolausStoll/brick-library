@@ -3814,29 +3814,6 @@ onMounted(async () => {
     border-bottom: none;
   }
 
-  .set-list-thumb {
-    border-width: 2px;
-    border-style: solid;
-    border-color: var(--border-light);
-  }
-
-  .set-list-thumb[data-status='New'] {
-    border-color: var(--status-new-text);
-  }
-
-  .set-list-thumb[data-status='Building'] {
-    border-color: var(--status-building-text);
-  }
-
-  .set-list-thumb[data-status='Built'],
-  .set-list-thumb[data-status='Disassembled'] {
-    border-color: var(--status-built-text);
-  }
-
-  .set-list-thumb[data-status='Sold'] {
-    border-color: var(--status-sold-text);
-  }
-
   .set-card__layout {
     grid-template-columns: 1fr;
   }
@@ -5179,7 +5156,7 @@ onMounted(async () => {
 
   /* App footer: raise above bottom nav, hide dark toggle (it's in nav) */
   .app-footer {
-    bottom: 4.5rem;
+    bottom: 4.0rem;
   }
 
   .dark-mode-toggle {
