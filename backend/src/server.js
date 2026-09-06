@@ -810,11 +810,8 @@ if (hasStatic) {
   app.use(express.static(STATIC_DIR));
 
   // SPA fallback (nur wenn es keine /api route ist)
-  app.use((req, res, next) => {
-    if (req.method === 'GET' && !req.path.startsWith('/api')) {
-      return res.sendFile(path.join(STATIC_DIR, 'index.html'));
-    }
-    next();
+  app.get(/^\/(?!api).*/, (req, res) => {
+    res.sendFile(path.join(STATIC_DIR, 'index.html'));
   });
 } else {
   console.warn(`No static frontend found. Expected index.html in: ${STATIC_DIR}`);
