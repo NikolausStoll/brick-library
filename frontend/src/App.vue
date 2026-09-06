@@ -3751,7 +3751,20 @@ onMounted(async () => {
 
 
 @media (max-width: 768px) {
+  /* Fix for Android Chrome / iOS Safari dynamic viewport:
+     body must NOT scroll — .page is the scroll container.
+     This prevents fixed elements jumping when the address bar shows/hides. */
+  :global(html),
+  :global(body) {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
   .page {
+    height: 100dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    /* padding set below */
     padding: 0.5rem 0.35rem 2.5rem;
   }
 

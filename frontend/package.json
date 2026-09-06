@@ -1,6 +1,6 @@
 {
   "name": "brick-library-frontend",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "private": true,
   "type": "module",
   "scripts": {
