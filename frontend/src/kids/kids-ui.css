@@ -682,7 +682,7 @@
 .set-card__image-wrapper {
   position: relative;
   width: 100%;
-  height: 250px;
+  aspect-ratio: 4 / 3;
 }
 
 .set-card__image {
@@ -721,7 +721,7 @@
 .set-card__image-empty {
   position: relative;
   width: 100%;
-  height: 250px;
+  aspect-ratio: 4 / 3;
   border-radius: 0.75rem;
   background: var(--bg-inset);
   border: 1px dashed var(--border-medium);

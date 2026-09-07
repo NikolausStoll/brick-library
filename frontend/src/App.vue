@@ -251,18 +251,19 @@
               <button type="button" class="manage-images-gear" aria-label="Manage images" @click.stop="openImageManager(set.id)">
                 <span class="manage-images-gear__icon">&#9881;</span>
               </button>
+              <p class="set-card__status set-card__status--img-overlay" :data-status="set.status" @click.stop="cycleSetStatus(set)">{{ set.status }}</p>
             </div>
             <div v-else class="set-card__image-empty">
               <span>No images yet</span>
               <button type="button" class="manage-images-gear" aria-label="Manage images" @click.stop="openImageManager(set.id)">
                 <span class="manage-images-gear__icon">&#9881;</span>
               </button>
+              <p class="set-card__status set-card__status--img-overlay" :data-status="set.status" @click.stop="cycleSetStatus(set)">{{ set.status }}</p>
             </div>
           </div>
           <div class="set-card__details">
             <div class="set-card__name-row">
               <p class="set-card__name">{{ set.setName }}<span v-if="set.year" class="set-card__year"> ({{ set.year }})</span></p>
-              <p class="set-card__status" :data-status="set.status" @click.stop="cycleSetStatus(set)">{{ set.status }}</p>
             </div>
             <p class="set-card__secondary">
               <span class="set-card__manufacturer">{{ set.manufacturer }}</span>
@@ -2155,13 +2156,13 @@ onMounted(async () => {
   --color-success: #4ade80;
   --bg-success-soft: rgba(74, 222, 128, 0.1);
 
-  --status-new-bg: rgba(59, 130, 246, 0.2);
+  --status-new-bg: #243a60;
   --status-new-text: #60a5fa;
-  --status-building-bg: rgba(251, 191, 36, 0.2);
+  --status-building-bg: #4a4636;
   --status-building-text: #fbbf24;
-  --status-built-bg: rgba(52, 211, 153, 0.2);
+  --status-built-bg: #224a4e;
   --status-built-text: #34d399;
-  --status-sold-bg: rgba(148, 163, 184, 0.15);
+  --status-sold-bg: #2f3a4d;
   --status-sold-text: #94a3b8;
   --status-default-bg: rgba(148, 163, 184, 0.2);
 
@@ -2960,7 +2961,7 @@ onMounted(async () => {
 .set-card__image-wrapper {
   position: relative;
   width: 100%;
-  height: 250px;
+  aspect-ratio: 4 / 3;
 }
 
 .set-card__image {
@@ -2999,7 +3000,7 @@ onMounted(async () => {
 .set-card__image-empty {
   position: relative;
   width: 100%;
-  height: 250px;
+  aspect-ratio: 4 / 3;
   border-radius: 0.75rem;
   background: var(--bg-inset);
   border: 1px dashed var(--border-medium);
@@ -4737,21 +4738,30 @@ onMounted(async () => {
   }
 
   .set-card__name-row {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 0.4rem;
+    display: block;
   }
 
   .set-card__name {
     font-size: 0.88rem;
     margin: 0;
     font-weight: 600;
-    flex: 1;
-    min-width: 0;
+    width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    display: block;
+  }
+
+  /* Status badge overlaid on image, bottom-right */
+  .set-card__status--img-overlay {
+    position: absolute;
+    bottom: 0.4rem;
+    right: 0.4rem;
+    z-index: 2;
+    white-space: nowrap;
+    pointer-events: auto;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+    margin: 0;
   }
 
   .set-card__secondary {
