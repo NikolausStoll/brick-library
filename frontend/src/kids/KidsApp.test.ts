@@ -52,16 +52,22 @@ describe('KidsApp.vue', () => {
     const wrapper = mount(KidsApp);
     await flushPromises();
     expect(wrapper.text()).toContain('Police Station');
-    expect(wrapper.text()).toContain('Total Sets');
-    expect(wrapper.text()).toContain('Total Pieces');
-    expect(wrapper.text()).toContain('2');
+    // Compact stats row: "2 Sets · 639 pieces" (540 + 99)
+    expect(wrapper.text()).toContain('2 Sets');
+    expect(wrapper.text()).toContain('639 pieces');
   });
 
   it('sorts by piece count', async () => {
     const wrapper = mount(KidsApp);
     await flushPromises();
-    const piecesSort = wrapper.findAll('button.sort-chip').find((b) => b.text().includes('Pieces'));
-    await piecesSort!.trigger('click');
+    // Open desktop sort panel and click Pieces
+    const sortBtn = wrapper.find('.toolbar-sort-btn');
+    await sortBtn.trigger('click');
+    await wrapper.vm.$nextTick();
+    const piecesOption = wrapper
+      .findAll('.kids-sort-option')
+      .find((b) => b.text().includes('Pieces'));
+    await piecesOption!.trigger('click');
     await wrapper.vm.$nextTick();
     const names = wrapper.findAll('.set-card__name').map((n) => n.text());
     expect(names[0]).toContain('Fire Truck');

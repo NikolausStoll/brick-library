@@ -151,23 +151,22 @@ describe('App.vue', () => {
 
   it('renders collection stats for filtered sets', async () => {
     const wrapper = await mountApp();
-
-    expect(wrapper.text()).toContain('Total Sets');
-    expect(wrapper.text()).toContain('2');
-    expect(wrapper.text()).toContain('€10,00');
-    expect(wrapper.text()).toContain('300');
-    expect(wrapper.text()).toContain('New Sets');
-    expect(wrapper.text()).toContain('Built Sets');
+    // Compact stats row: "2 Sets · €30,00 total · 300 pieces · ..."
+    expect(wrapper.text()).toContain('2 Sets');
+    expect(wrapper.text()).toContain('€30,00 total');
+    expect(wrapper.text()).toContain('300 pieces');
   });
 
   it('filters by manufacturer case-insensitively', async () => {
     const wrapper = await mountApp();
-    const manufacturerSelect = wrapper
-      .findAll('.filter-chips select')
-      .find((select) => select.html().includes('King'));
+    // Open desktop filter panel
+    const filtersBtn = wrapper.findAll('.toolbar-btn').find((b) => b.text().includes('Filter'));
+    await filtersBtn!.trigger('click');
+    await wrapper.vm.$nextTick();
 
-    expect(manufacturerSelect).toBeTruthy();
-    await manufacturerSelect!.setValue('King');
+    // First select inside filter panel is manufacturer
+    const manufacturerSelect = wrapper.find('.desktop-filter-panel select');
+    await manufacturerSelect.setValue('King');
     await wrapper.vm.$nextTick();
 
     expect(wrapper.text()).toContain('Beta Set');
@@ -176,10 +175,14 @@ describe('App.vue', () => {
 
   it('filters by LEGO number chip', async () => {
     const wrapper = await mountApp();
-    const legoChip = wrapper
-      .findAll('button.chip')
-      .find((button) => button.text().includes('Lego#'));
+    // Open desktop filter panel
+    const filtersBtn = wrapper.findAll('.toolbar-btn').find((b) => b.text().includes('Filter'));
+    await filtersBtn!.trigger('click');
+    await wrapper.vm.$nextTick();
 
+    const legoChip = wrapper
+      .findAll('.filter-toggle-chip')
+      .find((b) => b.text().includes('LEGO'));
     await legoChip!.trigger('click');
     await wrapper.vm.$nextTick();
 
@@ -200,13 +203,24 @@ describe('App.vue', () => {
 
   it('sorts by purchase price descending when toggled twice', async () => {
     const wrapper = await mountApp();
-    const priceSort = wrapper
-      .findAll('button.sort-chip')
-      .find((button) => button.text().includes('Price') && !button.text().includes('piece'));
+    const sortBtn = wrapper.find('.toolbar-sort-btn');
 
-    await priceSort!.trigger('click');
+    // First open: set sort to Price (asc), panel closes
+    await sortBtn.trigger('click');
     await wrapper.vm.$nextTick();
-    await priceSort!.trigger('click');
+    let priceOption = wrapper
+      .findAll('.desktop-sort-option')
+      .find((b) => b.text().includes('Price') && !b.text().includes('piece'));
+    await priceOption!.trigger('click');
+    await wrapper.vm.$nextTick();
+
+    // Second open: toggle same field to desc, panel closes
+    await sortBtn.trigger('click');
+    await wrapper.vm.$nextTick();
+    priceOption = wrapper
+      .findAll('.desktop-sort-option')
+      .find((b) => b.text().includes('Price') && !b.text().includes('piece'));
+    await priceOption!.trigger('click');
     await wrapper.vm.$nextTick();
 
     const names = wrapper.findAll('.set-card__name').map((node) => node.text());
@@ -216,9 +230,16 @@ describe('App.vue', () => {
 
   it('resets filters and sort', async () => {
     const wrapper = await mountApp();
-    const manufacturerSelect = wrapper.findAll('.filter-chips select')[0];
+    // Open filter panel and apply manufacturer filter
+    const filtersBtn = wrapper.findAll('.toolbar-btn').find((b) => b.text().includes('Filter'));
+    await filtersBtn!.trigger('click');
+    await wrapper.vm.$nextTick();
+    const manufacturerSelect = wrapper.find('.desktop-filter-panel select');
     await manufacturerSelect.setValue('King');
-    await wrapper.get('.reset-chip').trigger('click');
+    await wrapper.vm.$nextTick();
+
+    // Click Reset inside the filter panel
+    await wrapper.get('.desktop-filter-reset').trigger('click');
     await wrapper.vm.$nextTick();
 
     expect(wrapper.text()).toContain('Alpha Set');
@@ -254,8 +275,13 @@ describe('App.vue', () => {
 
   it('shows empty state when filters match nothing', async () => {
     const wrapper = await mountApp();
-    const statusSelect = wrapper.findAll('.filter-chips select')[2];
-    await statusSelect.setValue('Sold');
+    // Open filter panel and set Status to Sold (no sets have status Sold)
+    const filtersBtn = wrapper.findAll('.toolbar-btn').find((b) => b.text().includes('Filter'));
+    await filtersBtn!.trigger('click');
+    await wrapper.vm.$nextTick();
+    // selects in filter panel: [manufacturer, theme, status, brickSize]
+    const selects = wrapper.findAll('.desktop-filter-panel select');
+    await selects[2].setValue('Sold');
     await wrapper.vm.$nextTick();
 
     expect(wrapper.text()).toContain('No sets match the active filters.');

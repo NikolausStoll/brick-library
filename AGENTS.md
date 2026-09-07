@@ -33,6 +33,16 @@ Help the user iterate on the **Brick Library** tracker: a personal app to manage
 - **Breaking the schema:** Do not rename or drop columns in `sets` / `set_images` without explicit instruction; if the user says “no migration,” they may reset the DB manually.
 - **Ignoring AGENTS.md:** When in doubt, re-read this file and the root README; keep behavior aligned with the described data model and API.
 
+## Version bumps
+
+Before bumping the version and pushing, always run the full test suite locally:
+
+```bash
+npm test
+```
+
+Both frontend and backend tests must pass. Frontend tests are in `frontend/src/*.test.ts` and `frontend/src/kids/*.test.ts`. If the UI changes break existing test selectors or assertions, update the tests to match the new UI before bumping. Do not skip failing tests.
+
 ## References
 
 - **CLAUDE.md** – Points to this file for workspace guidance.

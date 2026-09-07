@@ -261,7 +261,7 @@
         <div class="mobile-detail-handle"></div>
         <div class="mobile-detail-top">
           <div class="mobile-detail-top-actions">
-            <button type="button" class="icon-button" aria-label="Edit set" @click="openMobileDetailEdit">&#9998;</button>
+            <button type="button" class="icon-button" aria-label="Edit set" @click="openMobileDetailEdit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 20H20.5M18 10L21 7L17 3L14 6M18 10L8 20H4V16L14 6M18 10L14 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             <button type="button" class="icon-button" aria-label="Close" @click="closeMobileDetail">&times;</button>
           </div>
         </div>
@@ -311,7 +311,7 @@
     <!-- Form overlay -->
     <div
       v-if="isFormOverlayVisible"
-      class="overlay"
+      class="overlay kids-form-overlay"
       role="dialog"
       aria-modal="true"
       @click.self="closeFormOverlay"
@@ -319,65 +319,82 @@
       tabindex="-1"
       ref="formOverlayRef"
     >
-      <form class="card form-card overlay-card" @submit.prevent="saveSet">
-        <div class="overlay-header">
-          <h2>{{ isEditing ? 'Edit set' : 'Add a set' }}</h2>
+      <form class="kids-form-card" @submit.prevent="saveSet">
+        <!-- Top bar -->
+        <div class="kids-form-topbar">
           <button type="button" class="icon-button" aria-label="Close" @click="closeFormOverlay">&times;</button>
-        </div>
-        <div class="form-grid">
-          <label>
-            Manufacturer
-            <input
-              v-model="form.manufacturer"
-              type="text"
-              required
-              list="kids-manufacturer-options"
-              placeholder="LEGO"
-            />
-            <datalist id="kids-manufacturer-options">
-              <option v-for="manufacturer in manufacturers" :key="manufacturer" :value="manufacturer" />
-            </datalist>
-          </label>
-          <label>
-            Set name
-            <input v-model="form.setName" type="text" required placeholder="Police Station" />
-          </label>
-          <label>
-            Set number
-            <input v-model="form.setNumber" type="text" placeholder="60316" />
-          </label>
-          <label>
-            Brick size
-            <select v-model="form.brickSize">
-              <option v-for="size in brickSizes" :key="size" :value="size">{{ size }}</option>
-            </select>
-          </label>
-          <label>
-            Piece count
-            <input v-model="form.pieceCount" type="number" min="0" placeholder="540" />
-          </label>
-          <label class="full-width">
-            Instructions URL
-            <input v-model="form.instructionsUrl" type="url" placeholder="https://..." />
-          </label>
-        </div>
-        <div v-if="isEditing" class="form-actions-row">
-          <button type="submit" class="primary-button" :disabled="submitting">
-            {{ submitting ? 'Saving…' : 'Update set' }}
-          </button>
-          <button
-            type="button"
-            class="delete-set-button"
-            :class="{ confirming: deleteSetConfirming }"
-            :disabled="deletingSet"
-            @click="deleteSet"
-          >
-            {{ deletingSet ? 'Deleting…' : deleteSetConfirming ? 'Are you sure?' : 'Delete set' }}
+          <span class="kids-form-topbar-title">{{ isEditing ? 'Edit set' : 'Add set' }}</span>
+          <button type="submit" class="kids-form-topbar-save" :disabled="submitting">
+            {{ submitting ? '…' : isEditing ? 'Save' : 'Add' }}
           </button>
         </div>
-        <button v-else type="submit" class="primary-button" :disabled="submitting">
-          {{ submitting ? 'Saving…' : 'Add set' }}
-        </button>
+        <!-- Scrollable body -->
+        <div class="kids-form-body">
+          <!-- Edit context -->
+          <div v-if="isEditing" class="kids-form-context">
+            <div class="kids-form-context__thumb">
+              <img
+                v-if="getCurrentImage(editingId)"
+                :src="getCurrentImage(editingId)?.thumbUrl || getCurrentImage(editingId)?.url"
+                :data-fallback="getCurrentImage(editingId)?.url"
+                :alt="form.setName"
+                @error="onImageError"
+              />
+              <span v-else class="kids-form-context__thumb-empty" aria-hidden="true">&#9638;</span>
+            </div>
+            <div class="kids-form-context__info">
+              <p class="kids-form-context__name">{{ form.setName || 'Edit set' }}</p>
+              <p class="kids-form-context__meta">{{ form.manufacturer }}<template v-if="form.setNumber"> · #{{ form.setNumber }}</template></p>
+            </div>
+          </div>
+          <!-- Fields -->
+          <div class="kids-form-fields">
+            <label class="kids-form-field kids-form-field--full">
+              <span class="kids-form-label">Manufacturer</span>
+              <input v-model="form.manufacturer" type="text" required list="kids-manufacturer-options" placeholder="LEGO" />
+              <datalist id="kids-manufacturer-options">
+                <option v-for="manufacturer in manufacturers" :key="manufacturer" :value="manufacturer" />
+              </datalist>
+            </label>
+            <label class="kids-form-field kids-form-field--full">
+              <span class="kids-form-label">Set name</span>
+              <input v-model="form.setName" type="text" required placeholder="Police Station" />
+            </label>
+            <div class="kids-form-row-pair">
+              <label class="kids-form-field">
+                <span class="kids-form-label">Set number</span>
+                <input v-model="form.setNumber" type="text" placeholder="60316" />
+              </label>
+              <label class="kids-form-field">
+                <span class="kids-form-label">Piece count</span>
+                <input v-model="form.pieceCount" type="number" min="0" placeholder="540" />
+              </label>
+            </div>
+            <label class="kids-form-field kids-form-field--full">
+              <span class="kids-form-label">Brick size</span>
+              <select v-model="form.brickSize">
+                <option v-for="size in brickSizes" :key="size" :value="size">{{ size }}</option>
+              </select>
+            </label>
+            <label class="kids-form-field kids-form-field--full">
+              <span class="kids-form-label">Instructions URL</span>
+              <input v-model="form.instructionsUrl" type="url" placeholder="https://..." />
+            </label>
+          </div>
+          <!-- Delete (edit only) -->
+          <div v-if="isEditing" class="kids-form-delete-zone">
+            <hr class="kids-form-delete-divider" />
+            <button
+              type="button"
+              class="kids-form-delete-btn"
+              :class="{ confirming: deleteSetConfirming }"
+              :disabled="deletingSet"
+              @click="deleteSet"
+            >
+              {{ deletingSet ? 'Deleting…' : deleteSetConfirming ? 'Are you sure?' : 'Delete set' }}
+            </button>
+          </div>
+        </div><!-- /kids-form-body -->
       </form>
     </div>
 
@@ -1555,5 +1572,242 @@ onUnmounted(() => {
 
 @media (min-width: 1650px) {
   .set-grid { grid-template-columns: repeat(5, 1fr); }
+}
+
+/* ── Kids form (mirrors App.vue form design) ──────────────── */
+
+.kids-form-overlay {
+  padding: 1.5rem;
+}
+
+.kids-form-card {
+  background: var(--bg-card);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-card);
+  width: min(500px, 100%);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.kids-form-topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.85rem 0.6rem 0.65rem;
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.kids-form-topbar-title {
+  flex: 1;
+  font-size: 0.92rem;
+  font-weight: 700;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.kids-form-topbar-save {
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.kids-form-topbar-save:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.kids-form-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.25rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+/* Edit context */
+.kids-form-context {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.65rem;
+  background: var(--bg-elevated);
+  border-radius: 0.6rem;
+  border: 1px solid var(--border-light);
+}
+
+.kids-form-context__thumb {
+  width: 4rem;
+  height: 4rem;
+  border-radius: 0.4rem;
+  overflow: hidden;
+  background: var(--bg-inset);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-light);
+}
+
+.kids-form-context__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.kids-form-context__thumb-empty {
+  font-size: 1rem;
+  color: var(--text-muted);
+}
+
+.kids-form-context__info { min-width: 0; flex: 1; }
+
+.kids-form-context__name {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kids-form-context__meta {
+  margin: 0.1rem 0 0;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+/* Fields */
+.kids-form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.kids-form-row-pair {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.6rem;
+}
+
+.kids-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.kids-form-field--full { grid-column: 1 / -1; }
+
+.kids-form-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.kids-form-field input,
+.kids-form-field select {
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--border-input);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  font-family: inherit;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.kids-form-field select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2394a3b8'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  padding-right: 1.75rem;
+}
+
+.kids-form-field input:focus,
+.kids-form-field select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* Delete zone */
+.kids-form-delete-zone { padding-top: 0.5rem; }
+
+.kids-form-delete-divider {
+  border: none;
+  border-top: 1px solid var(--border-light);
+  margin: 0 0 0.75rem;
+}
+
+.kids-form-delete-btn {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--color-danger);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.5rem 0;
+  text-align: center;
+  opacity: 0.65;
+  transition: opacity 0.15s, background 0.15s;
+  border-radius: 0.5rem;
+}
+
+.kids-form-delete-btn:hover {
+  opacity: 1;
+  background: var(--bg-danger-soft);
+  padding: 0.5rem;
+}
+
+.kids-form-delete-btn.confirming {
+  opacity: 1;
+  background: var(--color-danger);
+  color: #fff;
+  padding: 0.5rem;
+  font-weight: 700;
+}
+
+.kids-form-delete-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Mobile: full-screen form */
+@media (max-width: 768px) {
+  .kids-form-overlay {
+    padding: 0;
+    align-items: flex-start;
+  }
+
+  .kids-form-card {
+    width: 100%;
+    height: 100dvh;
+    border-radius: 0;
+    max-height: none;
+  }
+
+  .kids-form-body {
+    padding-bottom: env(safe-area-inset-bottom, 1.25rem);
+  }
+
+  @media (max-width: 360px) {
+    .kids-form-row-pair { grid-template-columns: 1fr; }
+  }
 }
 </style>

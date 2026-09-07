@@ -885,7 +885,7 @@
       <div class="mobile-detail-handle"></div>
       <div class="mobile-detail-top">
         <div class="mobile-detail-top-actions">
-          <button type="button" class="icon-button" aria-label="Edit set" @click="openMobileDetailEdit">&#9998;</button>
+          <button type="button" class="icon-button" aria-label="Edit set" @click="openMobileDetailEdit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 20H20.5M18 10L21 7L17 3L14 6M18 10L8 20H4V16L14 6M18 10L14 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           <button type="button" class="icon-button" aria-label="Close" @click="closeMobileDetail">&times;</button>
         </div>
       </div>
@@ -3013,7 +3013,7 @@ onMounted(async () => {
 .manage-images-gear {
   position: absolute;
   top: 0.4rem;
-  right: 0.4rem;
+  right: 1rem;
   width: 2rem;
   height: 2rem;
   padding: 0;
