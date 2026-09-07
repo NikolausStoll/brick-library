@@ -231,7 +231,7 @@
           v-for="set in displayedSets"
           :key="set.id"
           class="set-card"
-          @click="startEditing(set)"
+          @click="openDesktopDetail(set)"
         >
           <div class="set-card__image-panel" @click.stop>
             <div v-if="getImagesForSet(set.id).length" class="set-card__image-wrapper">
@@ -251,19 +251,21 @@
               <button type="button" class="manage-images-gear" aria-label="Manage images" @click.stop="openImageManager(set.id)">
                 <span class="manage-images-gear__icon">&#9881;</span>
               </button>
-              <p class="set-card__status set-card__status--img-overlay" :data-status="set.status" @click.stop="cycleSetStatus(set)">{{ set.status }}</p>
             </div>
             <div v-else class="set-card__image-empty">
               <span>No images yet</span>
               <button type="button" class="manage-images-gear" aria-label="Manage images" @click.stop="openImageManager(set.id)">
                 <span class="manage-images-gear__icon">&#9881;</span>
               </button>
-              <p class="set-card__status set-card__status--img-overlay" :data-status="set.status" @click.stop="cycleSetStatus(set)">{{ set.status }}</p>
             </div>
           </div>
           <div class="set-card__details">
-            <div class="set-card__name-row">
-              <p class="set-card__name">{{ set.setName }}<span v-if="set.year" class="set-card__year"> ({{ set.year }})</span></p>
+            <div class="set-card__title-wrap">
+              <p class="set-card__name">
+                <span>{{ set.setName }}</span>
+                <span v-if="set.year" class="set-card__year">({{ set.year }})</span>
+              </p>
+              <span class="set-card__status" :data-status="set.status" @click.stop="cycleSetStatus(set)">{{ set.status }}</span>
             </div>
             <p class="set-card__secondary">
               <span class="set-card__manufacturer">{{ set.manufacturer }}</span>
@@ -278,13 +280,6 @@
               <span class="set-card__data-item">{{ set.pieceCount?.toLocaleString() ?? '—' }}<span class="set-card__data-unit"> pcs</span></span>
               <span class="set-card__data-sep" aria-hidden="true">·</span>
               <span class="set-card__data-item">{{ formatCents(set.pricePerPiece) }}</span>
-            </div>
-            <div class="set-card__chips" v-if="set.hasOriginalBox || set.retiredProduct || set.hasPrintedPhoto || set.instructionsUrl">
-              <a v-if="set.instructionsUrl" class="detail-chip detail-chip--instructions" :href="set.instructionsUrl" target="_blank" rel="noopener" @click.stop>Instructions</a>
-              <span v-if="set.retiredProduct" class="detail-chip detail-chip--retired" @click.stop="toggleChipFilter('retiredProduct')">Retired</span>
-              <span class="set-card__chips-spacer"></span>
-              <span v-if="set.hasOriginalBox" class="detail-chip detail-chip--info" @click.stop="toggleChipFilter('hasOriginalBox')">Box</span>
-              <span v-if="set.hasPrintedPhoto" class="detail-chip detail-chip--info" @click.stop="toggleChipFilter('hasPrintedPhoto')">Photo</span>
             </div>
           </div>
         </article>
@@ -958,6 +953,87 @@
         <p v-if="mobileDetailSet!.notes" class="mobile-detail-notes">{{ mobileDetailSet!.notes }}</p>
         <div class="mobile-detail-actions">
           <button type="button" class="primary-button mobile-detail-edit-btn" @click="openMobileDetailEdit">Edit Set</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    v-if="desktopDetailSet"
+    class="overlay desktop-detail-overlay"
+    role="dialog"
+    aria-modal="true"
+    @click.self="closeDesktopDetail"
+    @keydown.esc="closeDesktopDetail"
+    tabindex="-1"
+  >
+    <div class="desktop-detail-panel">
+      <div class="desktop-detail-header">
+        <div class="desktop-detail-top-actions">
+          <button type="button" class="icon-button" aria-label="Edit set" @click="openDesktopDetailEdit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 20H20.5M18 10L21 7L17 3L14 6M18 10L8 20H4V16L14 6M18 10L14 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button type="button" class="icon-button" aria-label="Close" @click="closeDesktopDetail">&times;</button>
+        </div>
+      </div>
+      <div class="desktop-detail-layout">
+        <div v-if="getImagesForSet(desktopDetailSet!.id).length" class="desktop-detail-image-column">
+          <img
+            :src="getCurrentImage(desktopDetailSet!.id)!.thumbUrl || getCurrentImage(desktopDetailSet!.id)!.url"
+            :data-fallback="getCurrentImage(desktopDetailSet!.id)!.url"
+            :alt="desktopDetailSet!.setName"
+            class="desktop-detail-main-image"
+            @click="openImageViewer(desktopDetailSet!.id)"
+            @error="(e) => { const t = (e.target as HTMLImageElement); const fb = t.dataset.fallback; if (fb) t.src = fb; }"
+          />
+          <button type="button" class="manage-images-gear desktop-detail-img-gear" aria-label="Manage images" @click.stop="openDesktopDetailImages"><span class="manage-images-gear__icon">&#9881;</span></button>
+        </div>
+        <div v-else class="desktop-detail-image-empty">
+          <button type="button" class="manage-images-gear desktop-detail-img-gear desktop-detail-img-gear--empty" aria-label="Add images" @click.stop="openDesktopDetailImages"><span class="manage-images-gear__icon">&#9881;</span></button>
+          No images
+        </div>
+        <div class="desktop-detail-body">
+          <div class="mobile-detail-name-row">
+            <h2 class="mobile-detail-name">{{ desktopDetailSet!.setName }}<span v-if="desktopDetailSet!.year" class="set-card__year">({{ desktopDetailSet!.year }})</span></h2>
+            <span class="set-card__status" :data-status="desktopDetailSet!.status" @click="cycleSetStatus(desktopDetailSet!)">{{ desktopDetailSet!.status }}</span>
+          </div>
+          <p class="mobile-detail-manufacturer">{{ desktopDetailSet!.manufacturer }}</p>
+          <p v-if="desktopDetailSet!.setNumber || desktopDetailSet!.legoReferenceNumber" class="set-card__number">{{ formatSetNumber(desktopDetailSet!) }}</p>
+          <dl class="mobile-detail-meta">
+            <div v-if="desktopDetailSet!.purchasePrice !== null">
+              <dt>{{ desktopDetailSet!.listType === 'wishlist' ? 'Target' : 'Price' }}</dt>
+              <dd>{{ formatPrice(desktopDetailSet!.purchasePrice) }}</dd>
+            </div>
+            <div v-if="desktopDetailSet!.pieceCount !== null">
+              <dt>Pieces</dt>
+              <dd>{{ desktopDetailSet!.pieceCount!.toLocaleString() }}</dd>
+            </div>
+            <div v-if="desktopDetailSet!.pricePerPiece !== null">
+              <dt>ct/piece</dt>
+              <dd>{{ formatCents(desktopDetailSet!.pricePerPiece) }}</dd>
+            </div>
+            <div v-if="desktopDetailSet!.brickSize">
+              <dt>Size</dt>
+              <dd>{{ desktopDetailSet!.brickSize }}</dd>
+            </div>
+            <div v-if="desktopDetailSet!.theme">
+              <dt>Theme</dt>
+              <dd>{{ desktopDetailSet!.theme }}</dd>
+            </div>
+            <div v-if="desktopDetailSet!.year">
+              <dt>Year</dt>
+              <dd>{{ desktopDetailSet!.year }}</dd>
+            </div>
+          </dl>
+          <div class="set-card__chips" v-if="desktopDetailSet!.hasOriginalBox || desktopDetailSet!.retiredProduct || desktopDetailSet!.hasPrintedPhoto || desktopDetailSet!.instructionsUrl">
+            <a v-if="desktopDetailSet!.instructionsUrl" class="detail-chip detail-chip--instructions" :href="desktopDetailSet!.instructionsUrl" target="_blank" rel="noopener" @click.stop>Instructions</a>
+            <span v-if="desktopDetailSet!.retiredProduct" class="detail-chip detail-chip--retired">Retired</span>
+            <span class="set-card__chips-spacer"></span>
+            <span v-if="desktopDetailSet!.hasOriginalBox" class="detail-chip detail-chip--info">Box</span>
+            <span v-if="desktopDetailSet!.hasPrintedPhoto" class="detail-chip detail-chip--info">Photo</span>
+          </div>
+          <p v-if="desktopDetailSet!.notes" class="mobile-detail-notes">{{ desktopDetailSet!.notes }}</p>
+          <div class="mobile-detail-actions">
+            <button type="button" class="primary-button mobile-detail-edit-btn" @click="openDesktopDetailEdit">Edit Set</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1821,6 +1897,7 @@ const filteredSets = computed(() => {
 const searchQuery = ref('');
 const mobileFilterDrawerOpen = ref(false);
 const mobileDetailSetId = ref<string | null>(null);
+const desktopDetailSetId = ref<string | null>(null);
 const desktopFilterPanelOpen = ref(false);
 const desktopSortPanelOpen = ref(false);
 const filterPopoverRef = ref<HTMLElement | null>(null);
@@ -1854,6 +1931,9 @@ const displayedSets = computed(() => {
 const mobileDetailSet = computed(() =>
   mobileDetailSetId.value ? sets.value.find((s) => s.id === mobileDetailSetId.value) ?? null : null
 );
+const desktopDetailSet = computed(() =>
+  desktopDetailSetId.value ? sets.value.find((s) => s.id === desktopDetailSetId.value) ?? null : null
+);
 
 const currentSortLabel = computed(() =>
   sortOptions.find((o) => o.key === sortField.value)?.label ?? String(sortField.value)
@@ -1882,16 +1962,34 @@ const openMobileDetail = (set: BrickSet) => {
 const closeMobileDetail = () => {
   mobileDetailSetId.value = null;
 };
+const openDesktopDetail = (set: BrickSet) => {
+  desktopDetailSetId.value = set.id;
+};
+const closeDesktopDetail = () => {
+  desktopDetailSetId.value = null;
+};
 const openMobileDetailEdit = () => {
   const set = mobileDetailSet.value;
   if (!set) return;
   closeMobileDetail();
   startEditing(set);
 };
+const openDesktopDetailEdit = () => {
+  const set = desktopDetailSet.value;
+  if (!set) return;
+  closeDesktopDetail();
+  startEditing(set);
+};
 const openMobileDetailImages = () => {
   const set = mobileDetailSet.value;
   if (!set) return;
   closeMobileDetail();
+  openImageManager(set.id);
+};
+const openDesktopDetailImages = () => {
+  const set = desktopDetailSet.value;
+  if (!set) return;
+  closeDesktopDetail();
   openImageManager(set.id);
 };
 
@@ -2156,13 +2254,13 @@ onMounted(async () => {
   --color-success: #4ade80;
   --bg-success-soft: rgba(74, 222, 128, 0.1);
 
-  --status-new-bg: #243a60;
+  --status-new-bg: rgba(59, 130, 246, 0.2);
   --status-new-text: #60a5fa;
-  --status-building-bg: #4a4636;
+  --status-building-bg: rgba(251, 191, 36, 0.2);
   --status-building-text: #fbbf24;
-  --status-built-bg: #224a4e;
+  --status-built-bg: rgba(52, 211, 153, 0.2);
   --status-built-text: #34d399;
-  --status-sold-bg: #2f3a4d;
+  --status-sold-bg: rgba(148, 163, 184, 0.15);
   --status-sold-text: #94a3b8;
   --status-default-bg: rgba(148, 163, 184, 0.2);
 
@@ -3372,6 +3470,25 @@ onMounted(async () => {
   margin-left: 1rem;
 }
 
+.set-card__title-wrap {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 3.1rem;
+}
+
+.set-card__title-wrap .set-card__name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  line-height: 1.35;
+  min-height: 2.7rem;
+  margin: 0;
+}
+
 .set-card__actions {
   margin-top: auto;
   display: flex;
@@ -3392,13 +3509,19 @@ onMounted(async () => {
 }
 
 .set-card__status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   font-size: 0.75rem;
   font-weight: 600;
+  line-height: 1.2;
   padding: 0.2rem 0.55rem;
   border-radius: 999px;
   background: var(--status-default-bg);
   color: var(--text-strong);
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .set-card__status[data-status="New"] {
@@ -3439,6 +3562,15 @@ onMounted(async () => {
   font-size: 0.95em;
 }
 
+.set-card__secondary {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .set-card__number {
   margin: 0.15rem 0;
   font-size: 0.75rem;
@@ -3472,6 +3604,72 @@ onMounted(async () => {
   gap: 0.35rem;
   margin-top: auto;
   padding-top: 0.5rem;
+}
+
+.desktop-detail-overlay {
+  padding: 2rem;
+  align-items: center;
+}
+
+.desktop-detail-panel {
+  width: min(1100px, 100%);
+  max-height: 92vh;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 1.25rem;
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.desktop-detail-header {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.8rem 1rem 0;
+}
+
+.desktop-detail-top-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.desktop-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 38%) minmax(0, 1fr);
+  gap: 1.5rem;
+  padding: 0 1.25rem 1.5rem;
+  align-items: start;
+}
+
+.desktop-detail-image-column,
+.desktop-detail-image-empty {
+  position: relative;
+  min-height: 300px;
+  border-radius: 1rem;
+  overflow: hidden;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-light);
+}
+
+.desktop-detail-main-image {
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+  object-fit: contain;
+  display: block;
+  background: var(--bg-inset);
+  cursor: zoom-in;
+}
+
+.desktop-detail-img-gear {
+  opacity: 1 !important;
+}
+
+.desktop-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding-top: 0.25rem;
 }
 
 .set-card__chips-spacer {
@@ -4738,30 +4936,41 @@ onMounted(async () => {
   }
 
   .set-card__name-row {
-    display: block;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.4rem;
   }
 
   .set-card__name {
     font-size: 0.88rem;
     margin: 0;
     font-weight: 600;
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    display: block;
   }
 
-  /* Status badge overlaid on image, bottom-right */
-  .set-card__status--img-overlay {
-    position: absolute;
-    bottom: 0.4rem;
-    right: 0.4rem;
-    z-index: 2;
-    white-space: nowrap;
-    pointer-events: auto;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  .set-card__title-wrap {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-height: 3.1rem;
+  }
+
+  .set-card__title-wrap .set-card__name {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    line-height: 1.35;
+    min-height: 2.7rem;
     margin: 0;
+    white-space: normal;
   }
 
   .set-card__secondary {

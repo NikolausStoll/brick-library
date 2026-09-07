@@ -190,15 +190,29 @@ describe('App.vue', () => {
     expect(wrapper.text()).not.toContain('Alpha Set');
   });
 
-  it('filters by retired chip on a set card', async () => {
+  it('filters by retired chip in the desktop filter panel', async () => {
     const wrapper = await mountApp();
-    const retiredChip = wrapper.find('.detail-chip--retired');
 
-    await retiredChip.trigger('click');
+    const filtersBtn = wrapper.findAll('.toolbar-btn').find((b) => b.text().includes('Filter'));
+    await filtersBtn!.trigger('click');
+    await wrapper.vm.$nextTick();
+
+    const retiredChip = wrapper
+      .findAll('.filter-toggle-chip')
+      .find((b) => b.text().includes('Retired'));
+    await retiredChip!.trigger('click');
     await wrapper.vm.$nextTick();
 
     expect(wrapper.text()).toContain('Beta Set');
     expect(wrapper.text()).not.toContain('Alpha Set');
+  });
+
+  it('keeps the desktop gallery overview focused on primary comparison data', async () => {
+    const wrapper = await mountApp();
+
+    expect(wrapper.findAll('.detail-chip')).toHaveLength(0);
+    expect(wrapper.findAll('.set-card__name')[0]?.text()).toContain('Alpha Set');
+    expect(wrapper.findAll('.set-card__data-row')[0]?.text()).toContain('€10,00');
   });
 
   it('sorts by purchase price descending when toggled twice', async () => {
