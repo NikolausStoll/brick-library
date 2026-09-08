@@ -3612,7 +3612,7 @@ onMounted(async () => {
 }
 
 .desktop-detail-panel {
-  width: min(1100px, 100%);
+  width: min(920px, 100%);
   max-height: 92vh;
   background: var(--bg-card);
   border: 1px solid var(--border-light);
@@ -3624,7 +3624,7 @@ onMounted(async () => {
 .desktop-detail-header {
   display: flex;
   justify-content: flex-end;
-  padding: 0.8rem 1rem 0;
+  padding: 0.8rem 1rem 1rem;
 }
 
 .desktop-detail-top-actions {
@@ -3663,6 +3663,7 @@ onMounted(async () => {
 
 .desktop-detail-img-gear {
   opacity: 1 !important;
+  right: 0.4rem;
 }
 
 .desktop-detail-body {
@@ -5014,6 +5015,17 @@ onMounted(async () => {
   .set-card__status {
     font-size: 0.65rem;
     flex-shrink: 0;
+  }
+
+  .desktop-detail-body .set-card__status {
+    font-size: 0.75rem;
+    line-height: 1.2;
+    padding: 0.2rem 0.55rem;
+  }
+
+  .desktop-detail-body .detail-chip {
+    font-size: 0.55rem;
+    padding: 0.2rem 0.5rem;
   }
 }
 
