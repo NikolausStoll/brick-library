@@ -6,8 +6,14 @@ import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
-import sharp from 'sharp';
-import * as cheerio from 'cheerio';
+import {
+  CACHE_CONTROL_HEADER,
+  createImagePathHelpers,
+  optimizeImage,
+  unlinkImageAndThumb,
+  writeThumbFromBuffer
+} from './lib/images.js';
+import { collectImageSources } from './lib/scrapeFromHtml.js';
 import { ensureKidsSchema } from './kids/kidsSchema.js';
 import { createKidsRouter } from './kids/kidsRoutes.js';
 
@@ -28,86 +34,10 @@ try {
   process.exit(1);
 }
 
-const IMAGE_QUALITY = Number(process.env.IMAGE_QUALITY || 80);
-const IMAGE_MAX_DIMENSION = Number(process.env.IMAGE_MAX_DIMENSION || 2400);
-const IMAGE_QUALITY_THUMB = Number(process.env.IMAGE_QUALITY_THUMB || 80);
-const IMAGE_MAX_DIMENSION_THUMB = Number(process.env.IMAGE_MAX_DIMENSION_THUMB || 600);
-
-const getThumbFileName = (fileName) => fileName.replace(/(\.[^.]+)$/, '-thumb$1');
-const getThumbPath = (setId, fileName) => path.join(UPLOAD_DIR, String(setId), getThumbFileName(fileName));
-const getThumbUrl = (setId, fileName) => path.posix.join('/uploads', String(setId), getThumbFileName(fileName));
-
-const optimizeImage = async (inputBuffer) => {
-  const image = sharp(inputBuffer);
-  const metadata = await image.metadata();
-
-  if (metadata.format === 'svg') {
-    return {
-      buffer: inputBuffer,
-      ext: '.svg',
-      width: metadata.width ?? null,
-      height: metadata.height ?? null,
-      fileSize: inputBuffer.length
-    };
-  }
-
-  if (metadata.format === 'gif') {
-    const { data, info } = await image.gif().toBuffer({ resolveWithObject: true });
-    return {
-      buffer: data,
-      ext: '.gif',
-      width: info.width ?? null,
-      height: info.height ?? null,
-      fileSize: info.size ?? data.length
-    };
-  }
-
-  const pipeline = image
-    .resize({
-      width: IMAGE_MAX_DIMENSION,
-      height: IMAGE_MAX_DIMENSION,
-      fit: 'inside',
-      withoutEnlargement: true
-    })
-    .webp({ quality: IMAGE_QUALITY });
-  const { data, info } = await pipeline.toBuffer({ resolveWithObject: true });
-  return {
-    buffer: data,
-    ext: '.webp',
-    width: info.width ?? null,
-    height: info.height ?? null,
-    fileSize: info.size ?? data.length
-  };
-};
-
-const createThumbBuffer = async (imageBuffer) => {
-  try {
-    const meta = await sharp(imageBuffer).metadata();
-    if (meta.format === 'svg' || meta.format === 'gif') {
-      return null;
-    }
-    const data = await sharp(imageBuffer)
-      .resize({
-        width: IMAGE_MAX_DIMENSION_THUMB,
-        height: IMAGE_MAX_DIMENSION_THUMB,
-        fit: 'inside',
-        withoutEnlargement: true
-      })
-      .webp({ quality: IMAGE_QUALITY_THUMB })
-      .toBuffer();
-    return data;
-  } catch {
-    return null;
-  }
-};
-
-const writeThumbFromBuffer = async (setId, fileName, imageBuffer) => {
-  const thumbBuffer = await createThumbBuffer(imageBuffer);
-  if (!thumbBuffer) return null;
-  const thumbPath = getThumbPath(setId, fileName);
-  fs.writeFileSync(thumbPath, thumbBuffer);
-  return thumbBuffer.length;
-};
+const { getSetDir, getImagePath, getThumbPath, getImageUrl, getThumbUrl } = createImagePathHelpers(
+  UPLOAD_DIR,
+  '/uploads'
+);
 
 const db = new Database(DB_PATH);
 
@@ -217,13 +147,10 @@ const sanitizeNullableBoolean = (value) => {
 
 const STATUSES = new Set(['New', 'Building', 'Built', 'Disassembled', 'Sold']);
 const BRICK_SIZES = new Set(['Diamond', 'Mini', 'Standard']);
-const getImagePath = (setId, fileName) => path.join(UPLOAD_DIR, String(setId), fileName);
-const getImageUrl = (setId, fileName) => path.posix.join('/uploads', String(setId), fileName);
-const CACHE_CONTROL_HEADER = 'public, max-age=31536000, immutable';
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const setDir = path.join(UPLOAD_DIR, req.params.setId);
+    const setDir = getSetDir(req.params.setId);
     fs.mkdir(setDir, { recursive: true }, (err) => cb(err, setDir));
   },
   filename: (req, file, cb) => {
@@ -320,13 +247,6 @@ const serializeImageRow = (row) => ({
   thumbUrl: getThumbUrl(row.setId, row.fileName)
 });
 
-const unlinkImageAndThumb = (setId, fileName) => {
-  const mainPath = getImagePath(setId, fileName);
-  try { fs.unlinkSync(mainPath); } catch { /* may be gone */ }
-  const thumbPath = getThumbPath(setId, fileName);
-  try { fs.unlinkSync(thumbPath); } catch { /* may be gone */ }
-};
-
 const findImageForSet = (setId, imageId) => {
   const numericSetId = Number(setId);
   const image = selectImageByIdStmt.get(imageId);
@@ -407,11 +327,10 @@ app.delete('/api/sets/:id', (req, res) => {
   }
   const images = selectImagesBySetIdStmt.all(setId);
   for (const image of images) {
-    unlinkImageAndThumb(setId, image.fileName);
+    unlinkImageAndThumb(getImagePath, getThumbPath, setId, image.fileName);
     deleteImageStmt.run(image.id);
   }
-  const setDir = path.join(UPLOAD_DIR, String(setId));
-  try { fs.rmdirSync(setDir); } catch { /* dir may be gone or not empty */ }
+  try { fs.rmdirSync(getSetDir(setId)); } catch { /* dir may be gone or not empty */ }
   res.status(204).send();
 });
 
@@ -457,7 +376,7 @@ app.post(
         const fileName = `${id}${ext}`;
         const optimizedPath = path.join(path.dirname(file.path), fileName);
         fs.writeFileSync(optimizedPath, buffer);
-        const fileSizeThumb = await writeThumbFromBuffer(setId, fileName, buffer);
+        const fileSizeThumb = await writeThumbFromBuffer(getThumbPath, setId, fileName, buffer);
         if (optimizedPath !== file.path) fs.unlinkSync(file.path);
         const sortOrder = maxOrder + 1 + i;
         const row = {
@@ -518,7 +437,7 @@ app.delete('/api/sets/:setId/images/:imageId', ensureSetExists, (req, res) => {
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'Image file not found' });
   }
-  unlinkImageAndThumb(setId, image.fileName);
+  unlinkImageAndThumb(getImagePath, getThumbPath, setId, image.fileName);
   deleteImageStmt.run(imageId);
   res.status(204).send();
 });
@@ -527,7 +446,7 @@ app.delete('/api/sets/:setId/images', ensureSetExists, (req, res) => {
   const setId = Number(req.params.setId);
   const images = selectImagesBySetIdStmt.all(setId);
   for (const image of images) {
-    unlinkImageAndThumb(setId, image.fileName);
+    unlinkImageAndThumb(getImagePath, getThumbPath, setId, image.fileName);
     deleteImageStmt.run(image.id);
   }
   res.status(204).send();
@@ -599,15 +518,14 @@ app.post('/api/sets/:setId/images/url', ensureSetExists, async (req, res) => {
     return res.status(422).json({ error: `Failed to process image: ${error.message}` });
   }
 
-  const setDir = path.join(UPLOAD_DIR, String(setId));
-  fs.mkdirSync(setDir, { recursive: true });
+  fs.mkdirSync(getSetDir(setId), { recursive: true });
 
   const { maxOrder } = selectMaxSortOrderStmt.get(setId);
   const now = new Date().toISOString();
   const id = randomUUID();
   const fileName = `${id}${optimized.ext}`;
-  fs.writeFileSync(path.join(setDir, fileName), optimized.buffer);
-  const fileSizeThumb = await writeThumbFromBuffer(setId, fileName, optimized.buffer);
+  fs.writeFileSync(getImagePath(setId, fileName), optimized.buffer);
+  const fileSizeThumb = await writeThumbFromBuffer(getThumbPath, setId, fileName, optimized.buffer);
 
   const sortOrder = maxOrder + 1;
   const row = {
@@ -631,107 +549,17 @@ app.post('/api/sets/:setId/images/url', ensureSetExists, async (req, res) => {
 
 app.post('/api/sets/:setId/images/scrape', ensureSetExists, async (req, res) => {
   const { pageUrl, containerSelector, rawHtml, baseUrl } = req.body;
+  const scrapeResult = await collectImageSources({ pageUrl, containerSelector, rawHtml, baseUrl });
 
-  const normalizedSelector = containerSelector && !/^[.#\[\*>~+:,]/.test(containerSelector.trim())
-    ? `.${containerSelector.trim()}`
-    : containerSelector?.trim();
-  const hasUrlMode = pageUrl && normalizedSelector;
-  const hasHtmlMode = rawHtml;
-  if (!hasUrlMode && !hasHtmlMode) {
-    return res.status(400).json({ error: 'Provide either pageUrl + containerSelector, or rawHtml' });
+  if (scrapeResult.error) {
+    return res.status(scrapeResult.status).json({ error: scrapeResult.error });
   }
-
-  let parsedBaseUrl = null;
-  const baseUrlSource = baseUrl || pageUrl;
-  if (baseUrlSource) {
-    try {
-      parsedBaseUrl = new URL(baseUrlSource);
-    } catch {
-      return res.status(400).json({ error: 'baseUrl / pageUrl is not a valid URL' });
-    }
-  }
-
-  const bestSrcFromImg = ($, el) => {
-    const $el = $(el);
-    if ($el.hasClass('zoomImg')) return null;
-
-    const dataLarge = $el.attr('data-large_image');
-    if (dataLarge) return dataLarge;
-
-    const dataSrc = $el.attr('data-src');
-    if (dataSrc) return dataSrc;
-
-    const srcset = $el.attr('srcset');
-    if (srcset) {
-      let best = null;
-      let bestW = 0;
-      for (const entry of srcset.split(',')) {
-        const parts = entry.trim().split(/\s+/);
-        const w = parseInt(parts[1], 10) || 0;
-        if (w > bestW) { bestW = w; best = parts[0]; }
-      }
-      if (best) return best;
-    }
-
-    return $el.attr('src') || null;
-  };
-
-  let imgSrcs = [];
-
-  if (hasHtmlMode) {
-    const $ = cheerio.load(rawHtml);
-    $('img').each((_, el) => {
-      const src = bestSrcFromImg($, el);
-      if (src) imgSrcs.push(src);
-    });
-  } else {
-    let html;
-    try {
-      const response = await fetch(pageUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5'
-        }
-      });
-      if (!response.ok) {
-        return res.status(502).json({ error: `Failed to fetch page: HTTP ${response.status}` });
-      }
-      html = await response.text();
-    } catch (error) {
-      return res.status(502).json({ error: `Failed to fetch page: ${error.message}` });
-    }
-
-    const $ = cheerio.load(html);
-    const container = $(normalizedSelector);
-    if (container.length === 0) {
-      return res.status(400).json({ error: `Selector "${normalizedSelector}" matched no elements` });
-    }
-    container.find('img').each((_, el) => {
-      const src = bestSrcFromImg($, el);
-      if (src) imgSrcs.push(src);
-    });
-  }
-
-  imgSrcs = [...new Set(imgSrcs)];
-
-  if (imgSrcs.length === 0) {
+  if (scrapeResult.empty) {
     return res.json({ found: 0, downloaded: 0, skipped: 0, images: [] });
   }
 
-  const resolvedUrls = imgSrcs.map((src) => {
-    try {
-      const parsed = new URL(src, parsedBaseUrl ?? undefined);
-      parsed.search = '';
-      return parsed.href;
-    } catch {
-      return null;
-    }
-  }).filter(Boolean);
-
   const setId = Number(req.params.setId);
-  const setDir = path.join(UPLOAD_DIR, String(setId));
-  fs.mkdirSync(setDir, { recursive: true });
+  fs.mkdirSync(getSetDir(setId), { recursive: true });
 
   const { maxOrder } = selectMaxSortOrderStmt.get(setId);
   let nextOrder = maxOrder + 1;
@@ -739,7 +567,7 @@ app.post('/api/sets/:setId/images/scrape', ensureSetExists, async (req, res) => 
   const created = [];
   let skipped = 0;
 
-  for (const imageUrl of resolvedUrls) {
+  for (const imageUrl of scrapeResult.resolvedUrls) {
     const existing = selectImageByOriginalUrlStmt.get(setId, imageUrl);
     if (existing) {
       skipped++;
@@ -771,9 +599,8 @@ app.post('/api/sets/:setId/images/scrape', ensureSetExists, async (req, res) => 
 
     const id = randomUUID();
     const fileName = `${id}${optimized.ext}`;
-    const filePath = path.join(setDir, fileName);
-    fs.writeFileSync(filePath, optimized.buffer);
-    const fileSizeThumb = await writeThumbFromBuffer(setId, fileName, optimized.buffer);
+    fs.writeFileSync(getImagePath(setId, fileName), optimized.buffer);
+    const fileSizeThumb = await writeThumbFromBuffer(getThumbPath, setId, fileName, optimized.buffer);
 
     const sortOrder = nextOrder++;
     const row = {
@@ -794,7 +621,7 @@ app.post('/api/sets/:setId/images/scrape', ensureSetExists, async (req, res) => 
   }
 
   res.status(201).json({
-    found: resolvedUrls.length,
+    found: scrapeResult.resolvedUrls.length,
     downloaded: created.length,
     skipped,
     images: created

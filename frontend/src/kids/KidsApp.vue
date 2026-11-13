@@ -523,16 +523,13 @@ import {
   uploadKidsImages
 } from './kidsApi';
 import type { KidsFormPayload, KidsSet, KidsSetImage } from './types';
+import { BRICK_SIZES, MANUFACTURERS, MOBILE_BREAKPOINT } from '../constants';
 
-const brickSizes = ['Diamond', 'Mini', 'Standard'];
-const manufacturers = [
-  'CaDA', 'DAGAO', 'JIE-STAR', 'King', 'LEGO', 'Lezi', 'Loz', 'MEGA',
-  'MINISO', 'Mork', 'Mould King', 'Panlos', 'QLT', 'TGL', 'Wange', 'Unknown'
-];
+const brickSizes = [...BRICK_SIZES];
+const manufacturers = [...MANUFACTURERS];
 
 type SortField = 'setName' | 'pieceCount';
 
-const MOBILE_BREAKPOINT = 768;
 const isMobileLayout = ref(typeof window !== 'undefined' ? window.innerWidth <= MOBILE_BREAKPOINT : false);
 const updateIsMobileLayout = () => { isMobileLayout.value = window.innerWidth <= MOBILE_BREAKPOINT; };
 

@@ -95,14 +95,19 @@ let setsStore = structuredClone(mockSets);
 const createFetchMock = () =>
   vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
+    const jsonResponse = (body: unknown, status = 200) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { 'Content-Type': 'application/json' }
+      });
 
     if (url === '/api/sets' && (!init || init.method === undefined || init.method === 'GET')) {
-      return new Response(JSON.stringify(setsStore), { status: 200 });
+      return jsonResponse(setsStore);
     }
 
     const imagesMatch = url.match(/\/api\/sets\/(\d+)\/images$/);
     if (imagesMatch && (!init || init.method === undefined || init.method === 'GET')) {
-      return new Response(JSON.stringify([]), { status: 200 });
+      return jsonResponse([]);
     }
 
     const updateMatch = url.match(/\/api\/sets\/(\d+)$/);
@@ -111,13 +116,13 @@ const createFetchMock = () =>
       const body = JSON.parse(String(init.body));
       const index = setsStore.findIndex((set) => set.id === id);
       if (index === -1) {
-        return new Response(JSON.stringify({ error: 'Set not found' }), { status: 404 });
+        return jsonResponse({ error: 'Set not found' }, 404);
       }
       setsStore[index] = { ...setsStore[index], ...body };
-      return new Response(JSON.stringify(setsStore[index]), { status: 200 });
+      return jsonResponse(setsStore[index]);
     }
 
-    return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
+    return jsonResponse({ error: 'Not found' }, 404);
   });
 
 const mountApp = async (): Promise<VueWrapper> => {
