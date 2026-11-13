@@ -14,5 +14,10 @@
     "test": "npm run test --workspaces --if-present",
     "test:backend": "npm --prefix backend run test",
     "test:frontend": "npm --prefix frontend run test"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "fsevents@2.3.3": true,
+    "better-sqlite3@12.11.1": true
   }
 }
